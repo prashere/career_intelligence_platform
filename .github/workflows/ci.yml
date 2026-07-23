@@ -48,6 +48,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://career:career@localhost:5432/career_intelligence
           DATABASE_URL_SYNC: postgresql://career:career@localhost:5432/career_intelligence
           APP_ENV: test
+          PYTHONPATH: .
         run: pytest -q
 
   frontend:
