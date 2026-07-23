@@ -1,0 +1,145 @@
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export interface Opportunity {
+  id: string;
+  title: string;
+  summary?: string;
+  institution?: string;
+  program?: string;
+  opportunity_type: string;
+  url: string;
+  deadline?: string;
+  requirements: string[];
+  status?: string;
+  fit_score?: number;
+  fit_level?: string;
+  fit_explanation?: string;
+  urgency_label?: string;
+}
+
+export interface FeedResponse {
+  summary: {
+    new_since: number;
+    deadlines_this_week: number;
+    prep_milestones_due: number;
+  };
+  scholarships: Opportunity[];
+  fellowships: Opportunity[];
+  other: Opportunity[];
+}
+
+export interface DashboardResponse {
+  updated_cards: Opportunity[];
+  in_progress: Opportunity[];
+  upskilling: LearningItem[];
+  notifications: Notification[];
+}
+
+export interface LearningItem {
+  id: string;
+  title: string;
+  item_type: string;
+  progress_percent: number;
+  status: string;
+  outcome_notes?: string;
+}
+
+export interface Notification {
+  id: string;
+  title: string;
+  body: string;
+  notification_type: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  long_term_goals: string;
+  research_interests: string[];
+  skills: string[];
+  target_regions: string[];
+  target_universities: string[];
+  degree_level?: string;
+}
+
+export interface ChatResponse {
+  reply: string;
+  citations: string[];
+  pending_actions?: { action: string; title: string; requires_approval?: boolean }[];
+}
+
+export interface WeeklyFocus {
+  deadlines: { title: string; deadline: string; id: string }[];
+  prep_tasks: { title: string; due?: string }[];
+  learning_tasks: { title: string; progress: number; status: string }[];
+  focus_summary: string;
+}
+
+export const api = {
+  health: () => request<{ status: string }>('/api/v1/health'),
+  feed: (search?: string) => request<FeedResponse>(`/api/v1/feed${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  opportunity: (id: string) => request<Opportunity>(`/api/v1/opportunities/${id}`),
+  updateStatus: (id: string, status: string) =>
+    request(`/api/v1/opportunities/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  chat: (id: string, message: string) =>
+    request<ChatResponse>(`/api/v1/opportunities/${id}/chat`, { method: 'POST', body: JSON.stringify({ message }) }),
+  agentChat: (id: string, message: string) =>
+    request<ChatResponse>(`/api/v1/opportunities/${id}/agent`, { method: 'POST', body: JSON.stringify({ message }) }),
+  dashboard: () => request<DashboardResponse>('/api/v1/dashboard'),
+  profile: () => request<UserProfile>('/api/v1/profile'),
+  updateProfile: (data: Partial<UserProfile>) =>
+    request<UserProfile>('/api/v1/profile', { method: 'PATCH', body: JSON.stringify(data) }),
+  rerank: () => request('/api/v1/profile/rank', { method: 'POST' }),
+  weeklyFocus: () => request<WeeklyFocus>('/api/v1/planning/weekly'),
+  learning: () => request<LearningItem[]>('/api/v1/learning'),
+  createLearning: (data: Partial<LearningItem>) =>
+    request<LearningItem>('/api/v1/learning', { method: 'POST', body: JSON.stringify(data) }),
+  notifications: () => request<Notification[]>('/api/v1/notifications'),
+  markRead: (id: string) => request(`/api/v1/notifications/${id}/read`, { method: 'PATCH' }),
+  calendarUrl: (id: string) => `${API_BASE}/api/v1/opportunities/${id}/calendar`,
+  people: () => request<Person[]>('/api/v1/people'),
+  createPerson: (data: Partial<Person>) =>
+    request<Person>('/api/v1/people', { method: 'POST', body: JSON.stringify(data) }),
+  communities: () => request<Community[]>('/api/v1/communities'),
+  createCommunity: (data: Partial<Community>) =>
+    request<Community>('/api/v1/communities', { method: 'POST', body: JSON.stringify(data) }),
+  experiences: () => request<Experience[]>('/api/v1/experiences'),
+  createExperience: (data: Partial<Experience>) =>
+    request<Experience>('/api/v1/experiences', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+export interface Person {
+  id: string;
+  name: string;
+  role: string;
+  affiliation?: string;
+  research_areas: string[];
+  relationship_notes?: string;
+}
+
+export interface Community {
+  id: string;
+  name: string;
+  community_type: string;
+  description?: string;
+  relevance_notes?: string;
+}
+
+export interface Experience {
+  id: string;
+  title: string;
+  experience_type: string;
+  description?: string;
+  status: string;
+}
