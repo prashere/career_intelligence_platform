@@ -1,13 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.career_agent import approve_pending_action, create_calendar_event, run_agent
 from app.database import get_db
 from app.models import (
-    AgentThread,
-    Application,
     Community,
     Experience,
     LearningItem,
@@ -18,7 +16,6 @@ from app.models import (
     Requirement,
     SourceType,
     UserOpportunity,
-    UserProfile,
 )
 from app.rag.retriever import answer_question, index_opportunity
 from app.schemas import (

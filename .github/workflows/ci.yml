@@ -36,6 +36,12 @@ jobs:
         working-directory: backend
         run: |
           pip install -r requirements.txt
+      - name: Enable pgvector extension
+        env:
+          PGPASSWORD: career
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          psql -h localhost -U career -d career_intelligence -c "CREATE EXTENSION IF NOT EXISTS vector;"
       - name: Lint
         working-directory: backend
         run: ruff check app tests
@@ -44,6 +50,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://career:career@localhost:5432/career_intelligence
           DATABASE_URL_SYNC: postgresql://career:career@localhost:5432/career_intelligence
+          APP_ENV: test
         run: pytest -q
 
   frontend:

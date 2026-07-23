@@ -15,7 +15,6 @@ from app.models import (
     UserProfile,
 )
 from app.schemas import (
-    ApplicationResponse,
     FeedResponse,
     FeedSummary,
     OpportunityResponse,

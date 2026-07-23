@@ -1,10 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
-from app.models import FitLevel, Notification, Opportunity, UserOpportunity, UserOpportunityStatus, UserProfile
+from app.models import FitLevel, Notification, Opportunity, UserOpportunity, UserOpportunityStatus
 from app.services.email import send_email
 
 

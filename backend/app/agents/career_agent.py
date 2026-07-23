@@ -1,14 +1,14 @@
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import datetime, timezone
+from typing import Optional
 
 import httpx
 from icalendar import Calendar, Event
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AgentThread, Opportunity, Requirement, UserOpportunity
-from app.rag.retriever import answer_question, retrieve_context
+from app.models import AgentThread, Opportunity, Requirement
+from app.rag.retriever import retrieve_context
 from app.services.email import send_email, web_search
 from app.services.embeddings import chat_completion
 

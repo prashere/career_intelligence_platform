@@ -1,7 +1,6 @@
 import asyncio
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models import OpportunitySource, UserProfile
@@ -38,9 +37,7 @@ def fetch_all_sources_task():
 def normalize_all_task():
     async def _normalize():
         async with async_session() as session:
-            result = await normalize_raw_documents(session, limit=200)
-            opp_result = await session.execute(select(OpportunitySource))
-            return result
+            return await normalize_raw_documents(session, limit=200)
 
     norm_result = run_async(_normalize())
 
