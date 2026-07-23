@@ -65,34 +65,3 @@ docs/             Architecture decision records
 .github/          CI workflows
 ```
 
-## Key API endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/v1/feed` | Opportunities feed with filters |
-| `GET /api/v1/opportunities/{id}` | Card detail |
-| `POST /api/v1/opportunities/{id}/agent` | Agentic chat |
-| `GET /api/v1/dashboard` | Updated / In Progress / Upskilling |
-| `GET /api/v1/planning/weekly` | Weekly focus view |
-| `PATCH /api/v1/profile` | Update goals and re-rank |
-
-## Deployment
-
-See [docs/deployment.md](docs/deployment.md) for Railway/Fly.io instructions.
-
-## Portfolio highlights
-
-- Automated multi-source ingestion with deduplication
-- pgvector embedding-based personalization with explainable ranking
-- Hybrid RAG retrieval (BM25-style + vector)
-- LangGraph-style agent with tools: web search, checklist, calendar, reminders
-- Celery beat schedules for ingest, rank, digest, and deadline reminders
-- Structured logging + Sentry integration ready
-
-## Boundaries
-
-This system supports career decisions—it does not replace mentors, write applications, or guarantee outcomes.
-
-## License
-
-MIT
