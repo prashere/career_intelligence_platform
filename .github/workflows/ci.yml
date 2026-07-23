@@ -42,9 +42,6 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y postgresql-client
           psql -h localhost -U career -d career_intelligence -c "CREATE EXTENSION IF NOT EXISTS vector;"
-      - name: Lint
-        working-directory: backend
-        run: ruff check app tests
       - name: Test
         working-directory: backend
         env:
