@@ -30,6 +30,9 @@ class Settings(BaseSettings):
 
     sentry_dsn: str = ""
 
+    # Monorepo root — set in Docker (e.g. /workspace). Empty = auto-detect from backend layout.
+    project_root: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 
@@ -38,7 +39,13 @@ export default function Profile() {
 
   return (
     <>
-      <div className="page-header"><h2>Profile & Goals</h2></div>
+      <div className="page-header intake-header">
+        <h2>Profile & Goals</h2>
+        <Link to="/profile/intake" className="btn">Full profile intake</Link>
+      </div>
+      <p className="intake-subtitle" style={{ marginTop: '-1rem', marginBottom: '1rem' }}>
+        Quick edit below, or use full intake to build your LLM extraction pipeline.
+      </p>
       <div className="detail-panel profile-form" style={{ maxWidth: 600 }}>
         <label>Long-term goals</label>
         <textarea value={val('long_term_goals')} onChange={(e) => setForm({ ...form, long_term_goals: e.target.value })} />

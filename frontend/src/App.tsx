@@ -3,6 +3,7 @@ import Feed from './pages/Feed'
 import Detail from './pages/Detail'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
+import ProfileIntake from './pages/ProfileIntake'
 import Planning from './pages/Planning'
 import Learning from './pages/Learning'
 import Discover from './pages/Discover'
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/learning" element={<Learning />} />
           <Route path="/discover" element={<Discover />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/profile/intake" element={<ProfileIntake />} />
         </Routes>
       </main>
     </div>
