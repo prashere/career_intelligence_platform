@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
+from app.api.routes.profile_intake import router as intake_router
 from app.config import settings
 
 logger = structlog.get_logger()
@@ -22,6 +23,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(intake_router, prefix="/api/v1")
 
 
 @app.on_event("startup")
