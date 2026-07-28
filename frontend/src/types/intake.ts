@@ -15,18 +15,25 @@ export type AntiGoalKey =
 
 export interface IntakeFormData {
   full_name: string;
-  nationality: string;
-  current_country: string;
+  email: string;
+  nationality_code: string;
+  current_country_code: string;
   linkedin_url: string;
   github_url: string;
   website_url: string;
+  google_scholar_url: string;
+  orcid: string;
 
   degree_level: string;
   field_of_study: string;
+  field_of_study_other: string;
   institution: string;
-  graduation_date: string;
+  graduation_month: string;
+  graduation_year: string;
   gpa: string;
+  gpa_scale: string;
   honors: string;
+  honors_other: string;
   english_test: string;
   english_score: string;
   english_test_date: string;
@@ -37,40 +44,48 @@ export interface IntakeFormData {
   target_degree: TargetDegree;
   program_style: ProgramStyle;
   target_intake_term: string;
+  custom_intake_term: string;
   funding_requirement: FundingRequirement;
   target_regions: string[];
-  target_countries_priority: string;
+  target_countries_priority: string[];
   developing_country_scholarships: boolean;
   target_fields: string[];
   research_one_liner: string;
-  flagship_projects: string;
+  flagship_projects: string[];
   preferred_supervisors: string;
   open_to_ra: boolean;
   fellowship_types: string[];
   anti_goals: AntiGoalKey[];
   anti_goals_other: string;
 
-  target_universities: string;
+  target_universities: string[];
   connections: string;
-  hours_per_week: string;
-  search_sources: string;
+  hours_per_week: number | '';
+  search_sources: string[];
   additional_notes: string;
 }
 
 export const DEFAULT_INTAKE_FORM: IntakeFormData = {
   full_name: '',
-  nationality: '',
-  current_country: '',
+  email: '',
+  nationality_code: '',
+  current_country_code: '',
   linkedin_url: '',
   github_url: '',
   website_url: '',
+  google_scholar_url: '',
+  orcid: '',
 
   degree_level: '',
   field_of_study: '',
+  field_of_study_other: '',
   institution: '',
-  graduation_date: '',
+  graduation_month: '',
+  graduation_year: '',
   gpa: '',
+  gpa_scale: '100',
   honors: '',
+  honors_other: '',
   english_test: 'IELTS',
   english_score: '',
   english_test_date: '',
@@ -80,37 +95,35 @@ export const DEFAULT_INTAKE_FORM: IntakeFormData = {
 
   target_degree: 'MSc',
   program_style: 'research_aligned',
-  target_intake_term: '',
+  target_intake_term: 'Fall 2027',
+  custom_intake_term: '',
   funding_requirement: 'full_only',
   target_regions: [],
-  target_countries_priority: '',
+  target_countries_priority: [],
   developing_country_scholarships: true,
   target_fields: [],
   research_one_liner: '',
-  flagship_projects: '',
+  flagship_projects: [],
   preferred_supervisors: '',
   open_to_ra: false,
   fellowship_types: [],
   anti_goals: ['unpaid_internships', 'non_stem', 'no_funding_info', 'online_only', 'undergrad_only'],
   anti_goals_other: '',
 
-  target_universities: '',
+  target_universities: [],
   connections: '',
   hours_per_week: '',
-  search_sources: '',
+  search_sources: [],
   additional_notes: '',
 };
 
 export const WIZARD_STEPS = [
-  { id: 0, label: 'Identity', group: 'form' },
-  { id: 1, label: 'CV', group: 'form' },
-  { id: 2, label: 'Education', group: 'form' },
-  { id: 3, label: 'Goals', group: 'form' },
-  { id: 4, label: 'Optional', group: 'form' },
-  { id: 5, label: 'Review', group: 'form' },
-  { id: 6, label: 'Pass 1 prompt', group: 'llm' },
-  { id: 7, label: 'Validate JSON', group: 'llm' },
-  { id: 8, label: 'Pass 2 prompt', group: 'llm' },
+  { id: 0, label: 'About you' },
+  { id: 1, label: 'CV' },
+  { id: 2, label: 'Education' },
+  { id: 3, label: 'Goals' },
+  { id: 4, label: 'Preferences' },
+  { id: 5, label: 'Review' },
 ] as const;
 
 export const REGION_OPTIONS = [
@@ -133,15 +146,17 @@ export const FIELD_SUGGESTIONS = [
   'reinforcement learning',
   'NLP',
   'edge AI',
+  'social robotics',
+  'adaptive systems',
 ];
 
 export const ANTI_GOAL_OPTIONS: { key: AntiGoalKey; label: string }[] = [
-  { key: 'unpaid_internships', label: 'Unpaid internships / volunteer-only' },
-  { key: 'non_stem', label: 'Non-STEM fields' },
-  { key: 'no_funding_info', label: 'No funding info for internationals' },
-  { key: 'online_only', label: 'Pure online degrees' },
+  { key: 'unpaid_internships', label: 'Unpaid / volunteer-only' },
+  { key: 'non_stem', label: 'Non-STEM' },
+  { key: 'no_funding_info', label: 'No funding clarity' },
+  { key: 'online_only', label: 'Online-only degrees' },
   { key: 'undergrad_only', label: 'Undergraduate-only' },
-  { key: 'bootcamp', label: 'Coding bootcamp scholarships' },
+  { key: 'bootcamp', label: 'Bootcamp scholarships' },
 ];
 
 export interface IntakeDraft {
@@ -151,18 +166,11 @@ export interface IntakeDraft {
   updated_at?: string;
 }
 
-export interface IntakePromptResult {
-  prompt: string;
-  instructions: string;
-  save_path: string;
-}
-
-export interface IntakeValidateResult {
-  valid: boolean;
-  errors: string[];
-  profile?: Record<string, unknown>;
-  fields_needing_review?: string[];
-  confidence?: string;
+export interface IntakeSubmitResult {
+  ok: boolean;
+  saved_to: string;
+  submitted_at: string;
+  submission_id: string;
 }
 
 export interface IntakeStatus {
@@ -170,22 +178,36 @@ export interface IntakeStatus {
   current_step: number;
   has_cv: boolean;
   has_form_answers: boolean;
+  has_raw_submission: boolean;
   has_extraction_output: boolean;
   has_structured_profile: boolean;
   updated_at?: string;
+  last_submitted_at?: string;
 }
 
 export function mergeForm(partial?: Partial<IntakeFormData>): IntakeFormData {
   return { ...DEFAULT_INTAKE_FORM, ...partial };
 }
 
-export function parseChipInput(value: string): string[] {
-  return value
-    .split(/[,;\n]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+export function resolvedIntakeTerm(form: IntakeFormData): string {
+  if (form.target_intake_term === 'custom') return form.custom_intake_term;
+  return form.target_intake_term;
 }
 
-export function chipsToInput(values: string[]): string {
-  return values.join(', ');
+export function resolvedFieldOfStudy(form: IntakeFormData): string {
+  if (form.field_of_study === 'Other') return form.field_of_study_other;
+  return form.field_of_study;
+}
+
+export function resolvedHonors(form: IntakeFormData): string {
+  if (form.honors === 'other') return form.honors_other;
+  return form.honors;
+}
+
+export function graduationLabel(form: IntakeFormData): string {
+  if (form.still_studying) return form.expected_graduation || 'In progress';
+  if (form.graduation_month && form.graduation_year) {
+    return `${form.graduation_month} ${form.graduation_year}`;
+  }
+  return form.graduation_year || '';
 }

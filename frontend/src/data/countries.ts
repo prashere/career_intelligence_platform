@@ -1,0 +1,72 @@
+/** ISO 3166-1 countries — common study-abroad / scholarship contexts first. */
+
+export interface CountryOption {
+  code: string;
+  name: string;
+}
+
+export const COUNTRIES: CountryOption[] = [
+  { code: 'NP', name: 'Nepal' },
+  { code: 'IN', name: 'India' },
+  { code: 'BD', name: 'Bangladesh' },
+  { code: 'PK', name: 'Pakistan' },
+  { code: 'LK', name: 'Sri Lanka' },
+  { code: 'GB', name: 'United Kingdom' },
+  { code: 'DE', name: 'Germany' },
+  { code: 'FR', name: 'France' },
+  { code: 'NL', name: 'Netherlands' },
+  { code: 'CH', name: 'Switzerland' },
+  { code: 'SE', name: 'Sweden' },
+  { code: 'NO', name: 'Norway' },
+  { code: 'DK', name: 'Denmark' },
+  { code: 'FI', name: 'Finland' },
+  { code: 'AT', name: 'Austria' },
+  { code: 'BE', name: 'Belgium' },
+  { code: 'IE', name: 'Ireland' },
+  { code: 'ES', name: 'Spain' },
+  { code: 'IT', name: 'Italy' },
+  { code: 'PT', name: 'Portugal' },
+  { code: 'PL', name: 'Poland' },
+  { code: 'CZ', name: 'Czech Republic' },
+  { code: 'US', name: 'United States' },
+  { code: 'CA', name: 'Canada' },
+  { code: 'AU', name: 'Australia' },
+  { code: 'NZ', name: 'New Zealand' },
+  { code: 'SG', name: 'Singapore' },
+  { code: 'JP', name: 'Japan' },
+  { code: 'KR', name: 'South Korea' },
+  { code: 'CN', name: 'China' },
+  { code: 'HK', name: 'Hong Kong' },
+  { code: 'TW', name: 'Taiwan' },
+  { code: 'MY', name: 'Malaysia' },
+  { code: 'TH', name: 'Thailand' },
+  { code: 'VN', name: 'Vietnam' },
+  { code: 'PH', name: 'Philippines' },
+  { code: 'ID', name: 'Indonesia' },
+  { code: 'NG', name: 'Nigeria' },
+  { code: 'GH', name: 'Ghana' },
+  { code: 'KE', name: 'Kenya' },
+  { code: 'ZA', name: 'South Africa' },
+  { code: 'EG', name: 'Egypt' },
+  { code: 'ET', name: 'Ethiopia' },
+  { code: 'BR', name: 'Brazil' },
+  { code: 'MX', name: 'Mexico' },
+  { code: 'AR', name: 'Argentina' },
+  { code: 'CO', name: 'Colombia' },
+  { code: 'CL', name: 'Chile' },
+  { code: 'PE', name: 'Peru' },
+  { code: 'TR', name: 'Turkey' },
+  { code: 'SA', name: 'Saudi Arabia' },
+  { code: 'AE', name: 'United Arab Emirates' },
+  { code: 'IL', name: 'Israel' },
+  { code: 'RU', name: 'Russia' },
+  { code: 'UA', name: 'Ukraine' },
+  { code: 'RO', name: 'Romania' },
+  { code: 'HU', name: 'Hungary' },
+  { code: 'GR', name: 'Greece' },
+  { code: 'OTHER', name: 'Other (specify in notes)' },
+];
+
+export function countryNameByCode(code: string): string {
+  return COUNTRIES.find((c) => c.code === code)?.name ?? code;
+}
