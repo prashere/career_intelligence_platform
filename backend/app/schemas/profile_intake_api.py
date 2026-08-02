@@ -13,9 +13,21 @@ class IntakeDraftResponse(BaseModel):
 
 
 class IntakeDraftUpdate(BaseModel):
-    step: int = Field(ge=0, le=8)
+    step: int = Field(ge=0, le=6)
     form: dict[str, Any] = Field(default_factory=dict)
     cv_text: Optional[str] = None
+
+
+class IntakeSubmitRequest(BaseModel):
+    form: dict[str, Any]
+    cv_text: str
+
+
+class IntakeSubmitResponse(BaseModel):
+    ok: bool
+    saved_to: str
+    submitted_at: str
+    submission_id: str
 
 
 class IntakeCvUpdate(BaseModel):
@@ -45,6 +57,17 @@ class IntakeStatusResponse(BaseModel):
     current_step: int
     has_cv: bool
     has_form_answers: bool
+    has_raw_submission: bool = False
+    has_prefill: bool = False
     has_extraction_output: bool
     has_structured_profile: bool
+    has_compiled_artifacts: bool = False
+    has_ingestion_sources: bool = False
     updated_at: Optional[str] = None
+    last_submitted_at: Optional[str] = None
+
+
+class IntakeCompileResponse(BaseModel):
+    ok: bool
+    artifacts: dict[str, str]
+    ingestion_source_count: int = 0
