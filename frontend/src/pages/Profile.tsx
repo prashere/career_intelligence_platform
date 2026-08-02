@@ -1,8 +1,7 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api/client';
-import { Button, PageHeader, Skeleton } from '../components/ui/Primitives';
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '../api/client'
 
 export default function Profile() {
   const queryClient = useQueryClient();
@@ -30,17 +29,14 @@ export default function Profile() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Ranking only"
-        title="Quick profile"
-        lead={
-          <>
-            Lightweight fields used for opportunity ranking. For the full pipeline, use{' '}
-            <Link to="/profile/intake">Profile intake</Link>.
-          </>
-        }
-      />
-      <div className="card profile-form" style={{ maxWidth: 560 }}>
+      <div className="page-header intake-header">
+        <h2>Profile & Goals</h2>
+        <Link to="/profile/intake" className="btn">Full profile intake</Link>
+      </div>
+      <p className="intake-subtitle" style={{ marginTop: '-1rem', marginBottom: '1rem' }}>
+        Quick edit below, or use full intake to build your LLM extraction pipeline.
+      </p>
+      <div className="detail-panel profile-form" style={{ maxWidth: 600 }}>
         <label>Long-term goals</label>
         <textarea className="form-control" value={val('long_term_goals')} onChange={(e) => setForm({ ...form, long_term_goals: e.target.value })} />
         <label>Research interests (comma-separated)</label>
