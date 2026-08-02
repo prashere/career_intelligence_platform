@@ -1,7 +1,6 @@
 import type {
   IntakeDraft,
   IntakeFormData,
-  IntakeStatus,
   IntakeSubmitResult,
 } from '../types/intake';
 
@@ -30,8 +29,6 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const intakeApi = {
-  status: () => request<IntakeStatus>('/api/v1/profile/intake/status'),
-
   getDraft: () => request<IntakeDraft>('/api/v1/profile/intake/draft'),
 
   saveDraft: (step: number, form: Partial<IntakeFormData>, cv_text?: string) =>
@@ -65,7 +62,4 @@ export const intakeApi = {
     }
     return res.json() as Promise<{ ok: boolean; text: string; length: number }>;
   },
-
-  getSubmission: () =>
-    request<Record<string, unknown>>('/api/v1/profile/intake/submission'),
 };

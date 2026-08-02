@@ -173,41 +173,6 @@ export interface IntakeSubmitResult {
   submission_id: string;
 }
 
-export interface IntakeStatus {
-  has_draft: boolean;
-  current_step: number;
-  has_cv: boolean;
-  has_form_answers: boolean;
-  has_raw_submission: boolean;
-  has_extraction_output: boolean;
-  has_structured_profile: boolean;
-  updated_at?: string;
-  last_submitted_at?: string;
-}
-
 export function mergeForm(partial?: Partial<IntakeFormData>): IntakeFormData {
   return { ...DEFAULT_INTAKE_FORM, ...partial };
-}
-
-export function resolvedIntakeTerm(form: IntakeFormData): string {
-  if (form.target_intake_term === 'custom') return form.custom_intake_term;
-  return form.target_intake_term;
-}
-
-export function resolvedFieldOfStudy(form: IntakeFormData): string {
-  if (form.field_of_study === 'Other') return form.field_of_study_other;
-  return form.field_of_study;
-}
-
-export function resolvedHonors(form: IntakeFormData): string {
-  if (form.honors === 'other') return form.honors_other;
-  return form.honors;
-}
-
-export function graduationLabel(form: IntakeFormData): string {
-  if (form.still_studying) return form.expected_graduation || 'In progress';
-  if (form.graduation_month && form.graduation_year) {
-    return `${form.graduation_month} ${form.graduation_year}`;
-  }
-  return form.graduation_year || '';
 }
