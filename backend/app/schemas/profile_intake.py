@@ -124,6 +124,20 @@ class CertificationEntry(BaseModel):
     year: Optional[int] = None
 
 
+class AggregatorSelection(BaseModel):
+    id: str
+    enabled: bool = True
+    priority: int = 1
+    user_selected: bool = False
+    selection_reason: Optional[str] = None
+
+
+class ProfileSources(BaseModel):
+    aggregators: list[AggregatorSelection] = Field(default_factory=list)
+    manual_sources: list[str] = Field(default_factory=list)
+    notes: Optional[str] = None
+
+
 class ExtractionMeta(BaseModel):
     confidence: ExtractionConfidence
     fields_needing_review: list[str] = Field(default_factory=list)
@@ -146,6 +160,7 @@ class StructuredProfile(BaseModel):
     certifications: list[CertificationEntry] = Field(default_factory=list)
     connections: list[str] = Field(default_factory=list)
     search_keywords: list[str] = Field(default_factory=list)
+    sources: Optional[ProfileSources] = None
     extraction_meta: ExtractionMeta
 
     @field_validator("search_keywords")
