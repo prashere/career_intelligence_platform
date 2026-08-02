@@ -162,6 +162,14 @@ def _join_list(value: Any, sep: str = ", ") -> str:
     return ""
 
 
+def _graduation_from_parts(form: dict[str, Any]) -> str:
+    month = form.get("graduation_month", "")
+    year = form.get("graduation_year", "")
+    if month or year:
+        return " ".join(str(p) for p in (month, year) if p)
+    return ""
+
+
 def form_answers_to_markdown(form: dict[str, Any]) -> str:
     """Convert UI form dict to text block for LLM Pass 1."""
     anti = form.get("anti_goals") or []
@@ -172,18 +180,19 @@ def form_answers_to_markdown(form: dict[str, Any]) -> str:
     lines = [
         "## Step 1 — Identity",
         f"1.1 Full name: {form.get('full_name', '')}",
-        f"1.2 Nationality: {form.get('nationality', '')}",
-        f"1.3 Current country: {form.get('current_country', '')}",
-        f"1.4 LinkedIn: {form.get('linkedin_url', '')}",
-        f"1.5 GitHub: {form.get('github_url', '') or '—'}",
-        f"1.6 Website: {form.get('website_url', '') or '—'}",
+        f"1.2 Email: {form.get('email', '') or '—'}",
+        f"1.3 Nationality: {form.get('nationality') or form.get('nationality_code', '')}",
+        f"1.4 Current country: {form.get('current_country') or form.get('current_country_code', '')}",
+        f"1.5 LinkedIn: {form.get('linkedin_url', '')}",
+        f"1.6 GitHub: {form.get('github_url', '') or '—'}",
+        f"1.7 Website: {form.get('website_url', '') or '—'}",
         "",
         "## Step 3 — Education & language",
         f"3.1 Highest degree: {form.get('degree_level', '')}",
         f"3.2 Field: {form.get('field_of_study', '')}",
         f"3.3 Institution: {form.get('institution', '')}",
-        f"3.4 Graduation: {form.get('graduation_date', '')}",
-        f"3.5 GPA: {form.get('gpa', '')}",
+        f"3.4 Graduation: {form.get('graduation_date') or _graduation_from_parts(form)}",
+        f"3.5 GPA: {form.get('gpa', '')} {form.get('gpa_scale', '')}".strip(),
         f"3.6 Honors: {form.get('honors', '') or '—'}",
         f"3.7 English test: {form.get('english_test', '')}",
         f"3.8 Score + date: {form.get('english_score', '')} {form.get('english_test_date', '')}".strip(),
@@ -202,11 +211,11 @@ def form_answers_to_markdown(form: dict[str, Any]) -> str:
             "",
             "## Step 4 — Goals & constraints",
             f"4.1 Primary target: {form.get('target_degree', '')}",
-            f"4.2 Program style: {form.get('program_style', '')}",
+            f"4.2 Program style: {_join_list(form.get('program_styles')) or form.get('program_style', '')}",
             f"4.3 Target start term: {form.get('target_intake_term', '')}",
-            f"4.4 Funding requirement: {form.get('funding_requirement', '')}",
+            f"4.4 Funding requirement: {_join_list(form.get('funding_requirements')) or form.get('funding_requirement', '')}",
             f"4.5 Target regions: {_join_list(form.get('target_regions'))}",
-            f"4.6 Country priority: {form.get('target_countries_priority', '') or '—'}",
+            f"4.6 Country priority: {_join_list(form.get('target_countries_priority')) or '—'}",
         ]
     )
 
@@ -237,12 +246,16 @@ def form_answers_to_markdown(form: dict[str, Any]) -> str:
         [
             f"4D Anti-goals: {', '.join(anti_labels) if anti_labels else '—'}",
             "",
-            "## Step 5 — Optional depth",
-            f"5.1 Target universities: {form.get('target_universities', '') or '—'}",
-            f"5.2 Connections: {form.get('connections', '') or '—'}",
-            f"5.3 Hours/week: {form.get('hours_per_week', '') or '—'}",
-            f"5.4 Search sources today: {form.get('search_sources', '') or '—'}",
-            f"5.5 Additional notes: {form.get('additional_notes', '') or '—'}",
+            "## Step 5 — Preferences",
+            f"5.1 Discovery mode: {form.get('discovery_mode', 'open')}",
+            f"5.2 Search sources today: {_join_list(form.get('search_sources')) or '—'}",
+            f"5.3 Target universities: {form.get('target_universities', '') or '—'}",
+            f"5.4 Connections: {form.get('connections', '') or '—'}",
+            f"5.5 Open to relocation: {'Yes' if form.get('open_to_relocation') else 'No'}",
+            f"5.6 Other languages: {_join_list(form.get('other_languages')) or '—'}",
+            f"5.7 Mobility notes: {form.get('mobility_notes', '') or '—'}",
+            f"5.8 Hours/week: {form.get('hours_per_week', '') or '—'}",
+            f"5.9 Additional notes: {form.get('additional_notes', '') or '—'}",
         ]
     )
 

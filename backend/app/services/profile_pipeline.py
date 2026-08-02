@@ -180,6 +180,43 @@ def _connections_list(form: dict[str, Any]) -> list[str]:
     return [p.strip() for p in re.split(r"[,;\n]", str(raw)) if p.strip()]
 
 
+def _parse_list_field(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    if isinstance(value, str) and value.strip():
+        return [p.strip() for p in re.split(r"[,;\n]", value) if p.strip()]
+    return []
+
+
+def _collapse_program_style(form: dict[str, Any]) -> str:
+    styles = _parse_list_field(form.get("program_styles"))
+    if not styles:
+        legacy = form.get("program_style")
+        return str(legacy) if legacy else "no_preference"
+    if "no_preference" in styles:
+        return "no_preference"
+    has_research = "research_aligned" in styles
+    has_coursework = "coursework" in styles
+    if has_research and has_coursework:
+        return "no_preference"
+    if has_research:
+        return "research_aligned"
+    if has_coursework:
+        return "coursework"
+    return styles[0]
+
+
+def _collapse_funding_requirement(form: dict[str, Any]) -> str:
+    reqs = _parse_list_field(form.get("funding_requirements"))
+    if not reqs:
+        legacy = form.get("funding_requirement")
+        return str(legacy) if legacy else "full_only"
+    for strict in ("full_only", "partial_ok", "self_fund_possible"):
+        if strict in reqs:
+            return strict
+    return "full_only"
+
+
 def score_aggregators(form: dict[str, Any], registry: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Score registry entries; return sorted list with scores and reasons."""
     registry = registry or load_source_registry()
@@ -301,12 +338,12 @@ def prefill_from_form(form: dict[str, Any]) -> dict[str, Any]:
         },
         "preferences": {
             "target_degree": form.get("target_degree", "MSc"),
-            "program_style": form.get("program_style", "no_preference"),
+            "program_style": _collapse_program_style(form),
             "target_intake_term": _intake_term(form),
-            "funding_requirement": form.get("funding_requirement", "full_only"),
+            "funding_requirement": _collapse_funding_requirement(form),
             "target_regions": list(form.get("target_regions") or []),
-            "target_countries_priority": list(form.get("target_countries_priority") or []),
-            "target_universities": list(form.get("target_universities") or []),
+            "target_countries_priority": _parse_list_field(form.get("target_countries_priority")),
+            "target_universities": _parse_list_field(form.get("target_universities")),
             "target_fields": list(form.get("target_fields") or []),
             "research_direction_one_liner": form.get("research_one_liner") or None,
             "long_term_direction": None,
