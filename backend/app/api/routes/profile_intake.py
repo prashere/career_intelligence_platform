@@ -1,17 +1,20 @@
 """Profile intake API — form draft, CV, prompt generation, validation."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.schemas.profile_intake_api import (
     IntakeCvUpdate,
+    IntakeCvUploadResponse,
     IntakeDraftResponse,
     IntakeDraftUpdate,
     IntakePromptResponse,
     IntakeStatusResponse,
+    IntakeSubmitResponse,
     IntakeValidateRequest,
     IntakeValidateResponse,
 )
 from app.services import profile_intake as intake
+from app.services.cv_extract import extract_text_from_cv_file
 
 router = APIRouter(prefix="/profile/intake", tags=["profile-intake"])
 
@@ -51,6 +54,38 @@ async def update_cv(body: IntakeCvUpdate):
         raise HTTPException(status_code=400, detail="CV text cannot be empty")
     intake.save_cv_text(body.cv_text)
     return {"ok": True, "length": len(body.cv_text)}
+
+
+@router.post("/cv/upload", response_model=IntakeCvUploadResponse)
+async def upload_cv(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+    data = await file.read()
+    try:
+        text = extract_text_from_cv_file(file.filename, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    intake.save_cv_text(text)
+    return IntakeCvUploadResponse(text=text, length=len(text), filename=file.filename)
+
+
+@router.post("/submit", response_model=IntakeSubmitResponse)
+async def submit_intake(body: IntakeDraftUpdate):
+    cv_text = body.cv_text if body.cv_text is not None else intake.load_cv_text()
+    if not cv_text.strip():
+        raise HTTPException(status_code=400, detail="Add CV text before submitting")
+    required = ["full_name", "target_degree", "target_intake_term", "funding_requirement"]
+    missing = [f for f in required if not body.form.get(f)]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Complete required fields first: {', '.join(missing)}",
+        )
+    intake.save_draft(body.form, body.step, cv_text)
+    intake.save_form_answers_markdown(body.form)
+    path, sub_id = intake.save_raw_submission(body.form, cv_text)
+    rel = path.relative_to(intake.project_root())
+    return IntakeSubmitResponse(submission_id=sub_id, saved_to=str(rel))
 
 
 @router.post("/prompts/extraction", response_model=IntakePromptResponse)

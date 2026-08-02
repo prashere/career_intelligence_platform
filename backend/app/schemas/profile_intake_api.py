@@ -18,8 +18,21 @@ class IntakeDraftUpdate(BaseModel):
     cv_text: Optional[str] = None
 
 
+class IntakeSubmitResponse(BaseModel):
+    ok: bool = True
+    submission_id: str
+    saved_to: str
+
+
 class IntakeCvUpdate(BaseModel):
     cv_text: str
+
+
+class IntakeCvUploadResponse(BaseModel):
+    ok: bool = True
+    text: str
+    length: int
+    filename: str
 
 
 class IntakePromptResponse(BaseModel):
