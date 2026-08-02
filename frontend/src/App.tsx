@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes } from 'react-router-dom'
+import { Route, Routes } from 'react-router-dom'
 import Feed from './pages/Feed'
 import Detail from './pages/Detail'
 import Dashboard from './pages/Dashboard'
@@ -7,6 +7,8 @@ import ProfileIntake from './pages/ProfileIntake'
 import Planning from './pages/Planning'
 import Learning from './pages/Learning'
 import Discover from './pages/Discover'
+import { AppLayout } from './components/layout/AppLayout'
+import { ToastProvider } from './components/ui/Toast'
 
 export default function App() {
   return (

@@ -179,6 +179,38 @@ export function mergeForm(partial?: Partial<IntakeFormData>): IntakeFormData {
   return { ...DEFAULT_INTAKE_FORM, ...partial };
 }
 
+/** Map legacy draft keys (pre-refactor wizard) onto the current form shape. */
+export function normalizeDraftForm(partial?: Partial<IntakeFormData> & Record<string, unknown>): IntakeFormData {
+  const raw = { ...(partial ?? {}) } as Record<string, unknown>;
+
+  if (!raw.nationality && raw.nationality_code) {
+    raw.nationality = String(raw.nationality_code);
+  }
+  if (!raw.current_country && raw.current_country_code) {
+    raw.current_country = String(raw.current_country_code);
+  }
+  if (!raw.graduation_date && (raw.graduation_month || raw.graduation_year)) {
+    raw.graduation_date = [raw.graduation_month, raw.graduation_year].filter(Boolean).join(' ');
+  }
+  if (!raw.target_intake_term && raw.custom_intake_term) {
+    raw.target_intake_term = String(raw.custom_intake_term);
+  }
+  if (Array.isArray(raw.flagship_projects)) {
+    raw.flagship_projects = raw.flagship_projects.join(', ');
+  }
+  if (Array.isArray(raw.target_universities)) {
+    raw.target_universities = raw.target_universities.join(', ');
+  }
+  if (Array.isArray(raw.search_sources)) {
+    raw.search_sources = raw.search_sources.join(', ');
+  }
+  if (typeof raw.hours_per_week === 'number') {
+    raw.hours_per_week = String(raw.hours_per_week);
+  }
+
+  return mergeForm(raw as Partial<IntakeFormData>);
+}
+
 export function parseChipInput(value: string): string[] {
   return value
     .split(/[,;\n]/)

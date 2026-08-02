@@ -11,6 +11,7 @@ import {
   WIZARD_STEPS,
   chipsToInput,
   mergeForm,
+  normalizeDraftForm,
   parseChipInput,
 } from '../types/intake';
 
@@ -101,11 +102,11 @@ export default function ProfileIntake() {
   useEffect(() => {
     if (draft) {
       setStep(draft.step ?? 0);
-      setForm(mergeForm(draft.form as Partial<IntakeFormData>));
+      const normalized = normalizeDraftForm(draft.form as Partial<IntakeFormData> & Record<string, unknown>);
+      setForm(normalized);
       setCvText(draft.cv_text ?? '');
-      const f = mergeForm(draft.form as Partial<IntakeFormData>);
-      setFieldsInput(chipsToInput(f.target_fields));
-      setRegionsInput(chipsToInput(f.target_regions));
+      setFieldsInput(chipsToInput(normalized.target_fields));
+      setRegionsInput(chipsToInput(normalized.target_regions));
     }
   }, [draft]);
 
