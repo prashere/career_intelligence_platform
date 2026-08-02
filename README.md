@@ -40,6 +40,9 @@ docker compose up --build
 Services:
 - **API:** http://localhost:8000 (docs at /docs)
 - **Frontend:** http://localhost:5173
+- **Profile intake:** http://localhost:5173/profile/intake
+
+The `api` service mounts `./docs` at `/workspace/docs` so intake drafts and LLM prompt templates persist on your machine.
 
 ### Seed sample data
 

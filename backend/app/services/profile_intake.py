@@ -57,6 +57,43 @@ def _extraction_output_path() -> Path:
     return intake_dir() / "extraction-output.json"
 
 
+def _raw_submission_path() -> Path:
+    return intake_dir() / "raw-submission.json"
+
+
+def _submissions_archive_dir() -> Path:
+    path = intake_dir() / "submissions"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def load_raw_submission() -> dict[str, Any] | None:
+    path = _raw_submission_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_raw_submission(form: dict[str, Any], cv_text: str) -> tuple[Path, str]:
+    now = datetime.now(timezone.utc)
+    sub_id = now.strftime("%Y%m%dT%H%M%SZ")
+    payload = {
+        "schema_version": "1.0",
+        "submission_id": sub_id,
+        "submitted_at": now.isoformat(),
+        "source": "web_ui",
+        "form": form,
+        "cv_text": cv_text,
+        "cv_char_count": len(cv_text),
+    }
+    text = json.dumps(payload, indent=2, ensure_ascii=False)
+    path = _raw_submission_path()
+    path.write_text(text, encoding="utf-8")
+    archive = _submissions_archive_dir() / f"{sub_id}.json"
+    archive.write_text(text, encoding="utf-8")
+    return path, sub_id
+
+
 def _extract_prompt_block(md_filename: str) -> str:
     md_path = intake_dir() / md_filename
     if not md_path.exists():
