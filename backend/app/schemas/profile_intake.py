@@ -40,6 +40,11 @@ class ExtractionConfidence(str, Enum):
     low = "low"
 
 
+class DiscoveryMode(str, Enum):
+    open = "open"
+    target_list = "target_list"
+
+
 class Identity(BaseModel):
     full_name: str
     nationality: str
@@ -62,6 +67,10 @@ class Preferences(BaseModel):
     long_term_direction: Optional[str] = None
     anti_goals: list[str] = Field(default_factory=list)
     hours_per_week: Optional[float] = None
+    discovery_mode: DiscoveryMode = DiscoveryMode.open
+    open_to_relocation: bool = True
+    other_languages: list[str] = Field(default_factory=list)
+    mobility_notes: Optional[str] = None
 
 
 class EducationEntry(BaseModel):
@@ -130,6 +139,22 @@ class ExtractionMeta(BaseModel):
     notes: Optional[str] = None
 
 
+class AggregatorSelection(BaseModel):
+    id: str
+    enabled: bool = True
+    priority: int = 1
+    user_selected: bool = False
+    selection_reason: Optional[str] = None
+
+
+class ProfileSources(BaseModel):
+    """Per-user source preferences — aggregator IDs reference source-registry.yaml."""
+
+    aggregators: list[AggregatorSelection] = Field(default_factory=list)
+    manual_channels: list[str] = Field(default_factory=list)
+    notes: Optional[str] = None
+
+
 class StructuredProfile(BaseModel):
     """L2 profile — validated intake document."""
 
@@ -146,6 +171,7 @@ class StructuredProfile(BaseModel):
     certifications: list[CertificationEntry] = Field(default_factory=list)
     connections: list[str] = Field(default_factory=list)
     search_keywords: list[str] = Field(default_factory=list)
+    sources: ProfileSources = Field(default_factory=ProfileSources)
     extraction_meta: ExtractionMeta
 
     @field_validator("search_keywords")
@@ -170,10 +196,12 @@ class FilterConfig(BaseModel):
     must_match_any: list[str]
     profile_match_any: list[str]
     region_match_any: list[str]
+    institution_match_any: list[str] = Field(default_factory=list)
     hard_drop_any: list[str]
     target_degree_levels: list[str]
     funding_requirement: str
     nationality: str
+    discovery_mode: str = "open"
 
 
 class EligibilityRules(BaseModel):
@@ -185,3 +213,17 @@ class EligibilityRules(BaseModel):
     target_intake: Optional[str] = None
     min_english_ielts: Optional[float] = None
     nationality: Optional[str] = None
+    other_languages: list[str] = Field(default_factory=list)
+    open_to_relocation: bool = True
+
+
+class RankingConfig(BaseModel):
+    """L3 artifact — weights for per-user opportunity ranking."""
+
+    discovery_mode: str = "open"
+    university_match_weight: float = 0.2
+    region_match_weight: float = 0.1
+    interest_match_weight: float = 0.15
+    language_match_weight: float = 0.08
+    open_to_relocation: bool = True
+    manual_channels: list[str] = Field(default_factory=list)

@@ -30,6 +30,7 @@ export default function Profile() {
 
   const hasSubmission = status?.has_form_answers ?? false;
   const pipelineReady = status?.has_structured_profile ?? false;
+  const compiledReady = status?.has_compiled_artifacts ?? false;
 
   return (
     <>
@@ -54,7 +55,8 @@ export default function Profile() {
             <StatusRow label="Intake form submitted" done={hasSubmission} />
             <StatusRow label="CV on file" done={status?.has_cv ?? false} />
             <StatusRow label="Structured profile (L2)" done={pipelineReady} />
-            <StatusRow label="Compiled artifacts (L3)" done={false} />
+            <StatusRow label="Compiled artifacts (L3)" done={compiledReady} />
+            <StatusRow label="Profile truth doc" done={status?.has_profile_truth ?? false} />
           </div>
           {status?.updated_at && (
             <p className="muted-text small" style={{ marginTop: '1rem' }}>
@@ -69,7 +71,7 @@ export default function Profile() {
             <li>Complete all six sections in <strong>Profile setup</strong> and submit.</li>
             <li>Run <code>python scripts/prefill_structured.py</code> in the backend.</li>
             <li>Use the CV extraction prompt, then <code>merge_profile.py</code> and <code>compile_profile.py</code>.</li>
-            <li>Run <code>check_profile_ready.py</code> before starting ingest.</li>
+            <li>Run <code>check_profile_ready.py</code>, then <code>seed_sources_from_profile.py</code> and <code>sync_profile_to_db.py</code>.</li>
           </ol>
           <Link to="/profile/setup">
             <Button variant="primary">{hasSubmission ? 'Continue setup' : 'Begin setup'}</Button>

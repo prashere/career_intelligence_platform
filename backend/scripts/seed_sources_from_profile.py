@@ -65,6 +65,9 @@ async def seed_from_file(path: Path) -> int:
         await session.commit()
 
     print(f"Sources seeded: {added} added, {updated} updated ({len(sources)} total in config)")
+    manual = data.get("manual_channels") or []
+    if manual:
+        print(f"Manual channels (not seeded — workflow only): {', '.join(manual)}")
     return 0
 
 

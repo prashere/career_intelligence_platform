@@ -2,6 +2,7 @@
 
 from app.services.profile_intake import validate_structured_profile
 from app.services.profile_pipeline import (
+    compile_profile,
     merge_prefill_and_extraction,
     prefill_from_form,
     score_aggregators,
@@ -21,7 +22,11 @@ SAMPLE_FORM = {
     "target_countries_priority": ["Germany"],
     "target_fields": ["robotics", "computer vision", "HRI"],
     "developing_country_scholarships": True,
-    "search_sources": ["Scholars4Dev", "DAAD"],
+    "search_sources": ["Scholars4Dev", "DAAD", "LinkedIn"],
+    "target_universities": "TU Dresden, RWTH Aachen",
+    "discovery_mode": "target_list",
+    "open_to_relocation": True,
+    "other_languages": ["German"],
     "degree_level": "BSc / BA / BE",
     "field_of_study": "Computer Science",
     "institution": "Test University",
@@ -72,7 +77,11 @@ def test_prefill_includes_identity_and_sources():
     assert data["identity"]["full_name"] == "Test User"
     assert data["identity"]["nationality"] == "NP"
     assert data["preferences"]["target_degree"] == "MSc"
+    assert data["preferences"]["discovery_mode"] == "target_list"
+    assert data["preferences"]["other_languages"] == ["German"]
+    assert data["preferences"]["target_universities"] == ["TU Dresden", "RWTH Aachen"]
     assert len(data["sources"]["aggregators"]) == 4
+    assert "LinkedIn" in data["sources"]["manual_channels"]
     ids = [a["id"] for a in data["sources"]["aggregators"]]
     assert "scholars4dev" in ids
     assert "daad" in ids
@@ -85,11 +94,52 @@ def test_select_aggregators_prefers_user_chips():
     assert "daad" in top_ids
 
 
+def test_fellowship_scoring_boosts_profellow():
+    form = {**SAMPLE_FORM, "target_degree": "Fellowship", "search_sources": []}
+    scored = score_aggregators(form)
+    profellow = next(s for s in scored if s["id"] == "profellow")
+    assert "fellowship_focus" in profellow["reasons"]
+
+
 def test_merge_prefill_and_extraction():
     prefill = prefill_from_form(SAMPLE_FORM)
     merged = merge_prefill_and_extraction(prefill, SAMPLE_EXTRACTION)
     assert merged["identity"]["full_name"] == "Test User"
     assert len(merged["experiences"]) == 1
     assert len(merged["search_keywords"]) >= 10
+    assert len(merged["sources"]["aggregators"]) == 4
     profile, errors = validate_structured_profile(merged)
     assert profile is not None, errors
+    assert profile.sources.manual_channels == ["LinkedIn"]
+    assert profile.preferences.discovery_mode.value == "target_list"
+
+
+def test_compile_profile_writes_l3_artifacts(tmp_path, monkeypatch):
+    from app.services import profile_pipeline as pipeline
+
+    prefill = prefill_from_form(SAMPLE_FORM)
+    merged = merge_prefill_and_extraction(prefill, SAMPLE_EXTRACTION)
+    profile, errors = validate_structured_profile(merged)
+    assert profile is not None, errors
+
+    out_dir = tmp_path / "compiled"
+    truth_path = tmp_path / "profile-truth.md"
+
+    monkeypatch.setattr(pipeline, "compiled_dir", lambda: out_dir)
+    monkeypatch.setattr(pipeline, "_profile_truth_path", lambda: truth_path)
+
+    paths = compile_profile(profile)
+
+    ing = (out_dir / "ingestion_sources.json").read_text(encoding="utf-8")
+    assert "scholars4dev" in ing
+    assert "LinkedIn" in ing
+
+    fc = __import__("json").loads((out_dir / "filter_config.json").read_text(encoding="utf-8"))
+    assert fc["discovery_mode"] == "target_list"
+    assert "TU Dresden" in fc["institution_match_any"]
+
+    rc = __import__("json").loads((out_dir / "ranking_config.json").read_text(encoding="utf-8"))
+    assert rc["university_match_weight"] == 0.35
+    assert rc["manual_channels"] == ["LinkedIn"]
+
+    assert paths["profile_truth"].exists()

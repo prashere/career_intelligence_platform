@@ -44,6 +44,22 @@ def main() -> int:
     for src in ing.get("sources", []):
         print(f"  - {src['name']}: {src['url']}")
 
+    manual = ing.get("manual_channels") or []
+    if manual:
+        print(f"\nManual channels (not ingested): {', '.join(manual)}")
+
+    rc_path = paths.get("ranking_config")
+    if rc_path and rc_path.exists():
+        rc = json.loads(rc_path.read_text(encoding="utf-8"))
+        print(
+            f"\nRanking: discovery_mode={rc.get('discovery_mode')}, "
+            f"uni_weight={rc.get('university_match_weight')}"
+        )
+
+    print("\nNext: python scripts/check_profile_ready.py")
+    print("       python scripts/seed_sources_from_profile.py")
+    print("       python scripts/sync_profile_to_db.py")
+
     return 0
 
 

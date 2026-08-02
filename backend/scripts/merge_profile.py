@@ -58,6 +58,9 @@ def main() -> int:
     print(f"  Name: {profile.identity.full_name}")
     print(f"  Keywords: {len(profile.search_keywords)}")
     print(f"  Experiences: {len(profile.experiences)}")
+    print(f"  Aggregators: {len(profile.sources.aggregators)}")
+    print(f"  Manual channels: {', '.join(profile.sources.manual_channels) or '—'}")
+    print(f"  Discovery mode: {profile.preferences.discovery_mode.value}")
     if profile.extraction_meta.fields_needing_review:
         print("\nFields needing review:")
         for field in profile.extraction_meta.fields_needing_review:

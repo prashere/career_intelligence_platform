@@ -206,6 +206,8 @@ export interface IntakeStatus {
   has_form_answers: boolean;
   has_extraction_output: boolean;
   has_structured_profile: boolean;
+  has_compiled_artifacts?: boolean;
+  has_profile_truth?: boolean;
   updated_at?: string;
 }
 

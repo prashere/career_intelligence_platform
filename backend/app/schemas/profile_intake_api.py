@@ -60,4 +60,6 @@ class IntakeStatusResponse(BaseModel):
     has_form_answers: bool
     has_extraction_output: bool
     has_structured_profile: bool
+    has_compiled_artifacts: bool = False
+    has_profile_truth: bool = False
     updated_at: Optional[str] = None

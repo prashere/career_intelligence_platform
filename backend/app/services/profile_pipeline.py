@@ -13,8 +13,10 @@ import yaml
 from pydantic import ValidationError
 
 from app.schemas.profile_intake import (
+    DiscoveryMode,
     EligibilityRules,
     FilterConfig,
+    RankingConfig,
     StructuredProfile,
 )
 from app.services.profile_intake import (
@@ -217,6 +219,33 @@ def _collapse_funding_requirement(form: dict[str, Any]) -> str:
     return "full_only"
 
 
+def _hours_per_week(form: dict[str, Any]) -> float | None:
+    raw = form.get("hours_per_week")
+    if raw is None or raw == "":
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _discovery_mode(form: dict[str, Any]) -> str:
+    mode = form.get("discovery_mode", "open")
+    return str(mode) if mode in ("open", "target_list") else "open"
+
+
+def _manual_channels(form: dict[str, Any]) -> list[str]:
+    chips = [str(c) for c in (form.get("search_sources") or [])]
+    return [c for c in chips if SEARCH_CHIP_TO_REGISTRY.get(c) is None]
+
+
+def _other_languages(form: dict[str, Any]) -> list[str]:
+    langs = form.get("other_languages") or []
+    if isinstance(langs, str):
+        return _parse_list_field(langs)
+    return [str(v) for v in langs if str(v).strip()]
+
+
 def score_aggregators(form: dict[str, Any], registry: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Score registry entries; return sorted list with scores and reasons."""
     registry = registry or load_source_registry()
@@ -269,6 +298,20 @@ def score_aggregators(form: dict[str, Any], registry: dict[str, Any] | None = No
 
         if entry.get("funding_signal") == "high":
             score += 3
+
+        tags = [str(t).lower() for t in (entry.get("tags") or [])]
+        if target_degree == "Fellowship" and "fellowship" in tags:
+            score += 8
+            reasons.append("fellowship_focus")
+        elif target_degree == "MSc" and "scholarship" in tags:
+            score += 5
+            reasons.append("scholarship_focus")
+        elif target_degree == "PhD" and ("phd" in tags or "doctoral" in tags):
+            score += 5
+            reasons.append("phd_focus")
+        elif target_degree == "Internship" and "internship" in tags:
+            score += 5
+            reasons.append("internship_focus")
 
         scored.append(
             {
@@ -325,6 +368,8 @@ def prefill_from_form(form: dict[str, Any]) -> dict[str, Any]:
     ]
 
     aggregators = select_aggregators(form)
+    discovery = _discovery_mode(form)
+    manual = _manual_channels(form)
 
     return {
         "schema_version": "1.0",
@@ -348,7 +393,11 @@ def prefill_from_form(form: dict[str, Any]) -> dict[str, Any]:
             "research_direction_one_liner": form.get("research_one_liner") or None,
             "long_term_direction": None,
             "anti_goals": _anti_goals_labels(form),
-            "hours_per_week": form.get("hours_per_week") if form.get("hours_per_week") != "" else None,
+            "hours_per_week": _hours_per_week(form),
+            "discovery_mode": discovery,
+            "open_to_relocation": bool(form.get("open_to_relocation", True)),
+            "other_languages": _other_languages(form),
+            "mobility_notes": form.get("mobility_notes") or None,
         },
         "education": [
             {
@@ -385,11 +434,11 @@ def prefill_from_form(form: dict[str, Any]) -> dict[str, Any]:
         "search_keywords": [],
         "sources": {
             "aggregators": aggregators,
-            "manual_sources": [
-                c for c in (form.get("search_sources") or [])
-                if SEARCH_CHIP_TO_REGISTRY.get(str(c)) is None
-            ],
-            "notes": "Selected from source-registry.yaml via region and chip scoring",
+            "manual_channels": manual,
+            "notes": (
+                f"Selected from source-registry.yaml via region and chip scoring "
+                f"(discovery_mode={discovery})"
+            ),
         },
         "extraction_meta": {
             "confidence": "high",
@@ -581,6 +630,12 @@ def normalize_extraction_output(extraction: dict[str, Any]) -> dict[str, Any]:
     if isinstance(data.get("connections"), str):
         data["connections"] = _connections_list({"connections": data["connections"]})
 
+    sources = data.get("sources") or {}
+    if isinstance(sources, dict):
+        if "manual_sources" in sources and "manual_channels" not in sources:
+            sources["manual_channels"] = sources.pop("manual_sources")
+        data["sources"] = sources
+
     meta = data.get("extraction_meta") or {}
     data["extraction_meta"] = {
         "confidence": meta.get("confidence", "medium"),
@@ -663,7 +718,15 @@ def _build_filter_config(profile: StructuredProfile) -> dict[str, Any]:
     profile_match.extend(profile.search_keywords)
     for proj in profile.projects:
         profile_match.extend(proj.tags)
-    profile_match = list(dict.fromkeys(t.lower() for t in profile_match if t))[:25]
+
+    institution_match: list[str] = []
+    if prefs.discovery_mode == DiscoveryMode.target_list:
+        institution_match.extend(prefs.target_universities)
+        for uni in prefs.target_universities:
+            profile_match.append(uni)
+
+    profile_match = list(dict.fromkeys(t.lower() for t in profile_match if t))[:30]
+    institution_match = list(dict.fromkeys(t for t in institution_match if t))
 
     region_match: list[str] = []
     for region in prefs.target_regions:
@@ -683,10 +746,12 @@ def _build_filter_config(profile: StructuredProfile) -> dict[str, Any]:
         must_match_any=must_match[:15],
         profile_match_any=profile_match,
         region_match_any=region_match,
+        institution_match_any=institution_match,
         hard_drop_any=hard_drop[:12],
         target_degree_levels=[prefs.target_degree.value],
         funding_requirement=prefs.funding_requirement.value,
         nationality=identity.nationality,
+        discovery_mode=prefs.discovery_mode.value,
     ).model_dump(mode="json")
 
 
@@ -713,6 +778,21 @@ def _build_eligibility_rules(profile: StructuredProfile) -> dict[str, Any]:
         year = match.group(1)
         target_intake = f"{year}-09" if "fall" in intake.lower() else f"{year}-01"
 
+    boost = [
+        "international students",
+        "developing countries",
+        "global south",
+        "DAAD",
+        "fully funded",
+        "tuition waiver",
+    ]
+    for lang in prefs.other_languages:
+        boost.append(lang)
+        boost.append(f"{lang} language")
+
+    if not prefs.open_to_relocation:
+        boost.extend(prefs.target_regions[:3])
+
     return EligibilityRules(
         require_funding=funding_map.get(prefs.funding_requirement.value, "full_only"),
         reject_if_text_contains=[
@@ -724,17 +804,29 @@ def _build_eligibility_rules(profile: StructuredProfile) -> dict[str, Any]:
             "unpaid",
             "volunteer only",
         ],
-        boost_if_text_contains=[
-            "international students",
-            "developing countries",
-            "global south",
-            "DAAD",
-            "fully funded",
-            "tuition waiver",
-        ],
+        boost_if_text_contains=list(dict.fromkeys(boost)),
         target_intake=target_intake,
         min_english_ielts=ielts_min,
         nationality=identity.nationality,
+        other_languages=prefs.other_languages,
+        open_to_relocation=prefs.open_to_relocation,
+    ).model_dump(mode="json")
+
+
+def _build_ranking_config(profile: StructuredProfile) -> dict[str, Any]:
+    prefs = profile.preferences
+    manual = profile.sources.manual_channels if profile.sources else []
+
+    uni_weight = 0.35 if prefs.discovery_mode == DiscoveryMode.target_list else 0.2
+
+    return RankingConfig(
+        discovery_mode=prefs.discovery_mode.value,
+        university_match_weight=uni_weight,
+        region_match_weight=0.1,
+        interest_match_weight=0.15,
+        language_match_weight=0.08,
+        open_to_relocation=prefs.open_to_relocation,
+        manual_channels=manual,
     ).model_dump(mode="json")
 
 
@@ -768,6 +860,8 @@ def _build_ingestion_sources(profile: StructuredProfile) -> dict[str, Any]:
         "schema_version": "1.0",
         "compiled_at": datetime.now(timezone.utc).isoformat(),
         "profile_version": profile.schema_version,
+        "discovery_mode": profile.preferences.discovery_mode.value,
+        "manual_channels": profile.sources.manual_channels if profile.sources else [],
         "sources": sources,
     }
 
@@ -789,9 +883,35 @@ def _build_profile_truth(profile: StructuredProfile) -> str:
     soft = [
         ("Program style", prefs.program_style.value),
         ("Target fields", ", ".join(prefs.target_fields)),
+        ("Discovery mode", prefs.discovery_mode.value),
+        ("Target universities", ", ".join(prefs.target_universities) or "—"),
+        ("Other languages", ", ".join(prefs.other_languages) or "—"),
+        ("Open to relocation", "Yes" if prefs.open_to_relocation else "No"),
         ("Hours/week", str(prefs.hours_per_week or "—")),
     ]
     soft_rows = "\n".join(f"| {k} | {v} |" for k, v in soft)
+
+    agg_names = []
+    if profile.sources and profile.sources.aggregators:
+        registry = load_source_registry()
+        by_id = {e["id"]: e["name"] for e in registry.get("aggregators", [])}
+        for sel in profile.sources.aggregators:
+            if sel.enabled:
+                agg_names.append(by_id.get(sel.id, sel.id))
+
+    manual = profile.sources.manual_channels if profile.sources else []
+    sources_block = "\n".join(
+        [
+            "## Ingestion sources (RSS)",
+            "",
+            "\n".join(f"- {n}" for n in agg_names) or "- —",
+            "",
+            "## Manual channels (workflow only)",
+            "",
+            "\n".join(f"- {c}" for c in manual) or "- —",
+            "",
+        ]
+    )
 
     flagship = [p.name for p in profile.projects if p.is_flagship]
     pub_titles = [p.title for p in profile.publications[:3]]
@@ -824,6 +944,8 @@ def _build_profile_truth(profile: StructuredProfile) -> str:
 | Preference | Value |
 |------------|-------|
 {soft_rows}
+
+{sources_block}
 
 ## Evidence base
 
@@ -874,6 +996,11 @@ def compile_profile(profile: StructuredProfile | dict[str, Any]) -> dict[str, Pa
     er_path.write_text(json.dumps(er, indent=2, ensure_ascii=False), encoding="utf-8")
     paths["eligibility_rules"] = er_path
 
+    rc = _build_ranking_config(profile)
+    rc_path = out_dir / "ranking_config.json"
+    rc_path.write_text(json.dumps(rc, indent=2, ensure_ascii=False), encoding="utf-8")
+    paths["ranking_config"] = rc_path
+
     ing = _build_ingestion_sources(profile)
     ing_path = out_dir / "ingestion_sources.json"
     ing_path.write_text(json.dumps(ing, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -909,7 +1036,12 @@ def check_profile_ready(expected_sources: int = 4) -> tuple[bool, list[str]]:
             messages.append(f"structured-profile.json unreadable: {exc}")
 
     compiled = compiled_dir()
-    for name in ("filter_config.json", "eligibility_rules.json", "ingestion_sources.json"):
+    for name in (
+        "filter_config.json",
+        "eligibility_rules.json",
+        "ranking_config.json",
+        "ingestion_sources.json",
+    ):
         p = compiled / name
         if not p.exists():
             ok = False
@@ -932,3 +1064,30 @@ def check_profile_ready(expected_sources: int = 4) -> tuple[bool, list[str]]:
         messages.append("Profile package ready for Sprint 1 ingest.")
 
     return ok, messages
+
+
+def structured_profile_to_user_fields(profile: StructuredProfile) -> dict[str, Any]:
+    """Map L2 structured profile → UserProfile column updates."""
+    prefs = profile.preferences
+    return {
+        "name": profile.identity.full_name,
+        "long_term_goals": prefs.long_term_direction or prefs.research_direction_one_liner or "",
+        "research_interests": prefs.target_fields,
+        "skills": profile.skills,
+        "target_regions": prefs.target_regions,
+        "target_universities": prefs.target_universities,
+        "degree_level": prefs.target_degree.value,
+        "connections": profile.connections,
+        "projects": [p.model_dump(mode="json") for p in profile.projects],
+        "constraints": {
+            "discovery_mode": prefs.discovery_mode.value,
+            "open_to_relocation": prefs.open_to_relocation,
+            "other_languages": prefs.other_languages,
+            "mobility_notes": prefs.mobility_notes,
+            "funding_requirement": prefs.funding_requirement.value,
+            "program_style": prefs.program_style.value,
+            "target_intake_term": prefs.target_intake_term,
+            "manual_channels": profile.sources.manual_channels if profile.sources else [],
+            "anti_goals": prefs.anti_goals,
+        },
+    }

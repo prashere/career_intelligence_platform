@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -285,9 +286,28 @@ def build_compile_prompt(structured: dict[str, Any]) -> str:
     return template.replace("{{STRUCTURED_PROFILE_JSON}}", json_block)
 
 
+def normalize_structured_profile_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Apply legacy migrations before Pydantic validation."""
+    normalized = deepcopy(data)
+    sources = normalized.get("sources") or {}
+    if isinstance(sources, dict) and "manual_sources" in sources:
+        sources.setdefault("manual_channels", sources.pop("manual_sources"))
+        normalized["sources"] = sources
+    prefs = normalized.get("preferences") or {}
+    if isinstance(prefs, dict):
+        if "discovery_mode" not in prefs:
+            prefs["discovery_mode"] = "open"
+        if "open_to_relocation" not in prefs:
+            prefs["open_to_relocation"] = True
+        if "other_languages" not in prefs:
+            prefs["other_languages"] = []
+        normalized["preferences"] = prefs
+    return normalized
+
+
 def validate_structured_profile(data: dict[str, Any]) -> tuple[StructuredProfile | None, list[str]]:
     try:
-        profile = StructuredProfile.model_validate(data)
+        profile = StructuredProfile.model_validate(normalize_structured_profile_data(data))
         return profile, []
     except ValidationError as exc:
         errors = []
@@ -321,6 +341,16 @@ def load_structured_profile() -> dict[str, Any] | None:
 
 def intake_status() -> dict[str, Any]:
     draft = load_draft()
+    compiled = compiled_dir()
+    has_compiled = all(
+        (compiled / name).exists()
+        for name in (
+            "filter_config.json",
+            "eligibility_rules.json",
+            "ranking_config.json",
+            "ingestion_sources.json",
+        )
+    )
     return {
         "has_draft": draft is not None,
         "current_step": (draft or {}).get("step", 0),
@@ -328,5 +358,7 @@ def intake_status() -> dict[str, Any]:
         "has_form_answers": (intake_dir() / "form-answers.md").exists(),
         "has_extraction_output": _extraction_output_path().exists(),
         "has_structured_profile": _structured_path().exists(),
+        "has_compiled_artifacts": has_compiled,
+        "has_profile_truth": (project_root() / "docs" / "profile" / "profile-truth.md").exists(),
         "updated_at": (draft or {}).get("updated_at"),
     }

@@ -27,17 +27,27 @@ def urgency_score(deadline: Optional[datetime]) -> float:
 
 
 def eligibility_score(profile: UserProfile, opportunity: Opportunity) -> float:
+    constraints = profile.constraints or {}
+    discovery_mode = constraints.get("discovery_mode", "open")
+    uni_weight = 0.35 if discovery_mode == "target_list" else 0.2
+    region_weight = 0.1
+    interest_weight = 0.15
+    language_weight = 0.08
+
     score = 0.5
     text = f"{opportunity.title} {opportunity.summary or ''} {opportunity.institution or ''}".lower()
     for interest in profile.research_interests or []:
         if interest.lower() in text:
-            score += 0.15
+            score += interest_weight
     for uni in profile.target_universities or []:
         if uni.lower() in text:
-            score += 0.2
+            score += uni_weight
     for region in profile.target_regions or []:
         if region.lower() in text:
-            score += 0.1
+            score += region_weight
+    for lang in constraints.get("other_languages") or []:
+        if lang.lower() in text:
+            score += language_weight
     return min(score, 1.0)
 
 

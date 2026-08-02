@@ -32,11 +32,14 @@ def main() -> int:
 
     path = save_prefill(data)
     print(f"Prefill saved to: {path}")
+    print(f"  Discovery mode: {data.get('preferences', {}).get('discovery_mode', 'open')}")
     print(f"  Aggregators selected: {len(data.get('sources', {}).get('aggregators', []))}")
     for agg in data.get("sources", {}).get("aggregators", []):
         print(f"    - {agg['id']} (priority {agg['priority']})")
-    print("\nNext: generate CV prompt via POST /api/v1/profile/intake/prompts/cv-extraction")
-    print("      or copy docs/profile/intake/llm-cv-extraction-prompt.md")
+    manual = data.get("sources", {}).get("manual_channels") or []
+    if manual:
+        print(f"  Manual channels: {', '.join(manual)}")
+    print("\nNext: run CV extraction, then merge_profile.py and compile_profile.py")
     return 0
 
 

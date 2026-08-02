@@ -163,8 +163,9 @@ async def generate_compile_prompt(body: IntakeValidateRequest | None = None):
     return IntakePromptResponse(
         prompt=prompt,
         instructions=(
-            "Copy into your LLM after Pass 1 is confirmed. "
-            "Save filter_config.json, eligibility_rules.json, and profile-truth.md to docs/profile/compiled/"
+            "Deterministic compile — run scripts/compile_profile.py instead. "
+            "Produces filter_config.json, eligibility_rules.json, ranking_config.json, "
+            "ingestion_sources.json, and profile-truth.md"
         ),
         save_path="docs/profile/compiled/",
     )
