@@ -267,6 +267,31 @@ export function Stepper({
   );
 }
 
+/** Horizontal connected-dot stepper for multi-page forms. */
+export function HorizontalStepper({
+  steps,
+  current,
+}: {
+  steps: readonly { id: number; label: string }[];
+  current: number;
+}) {
+  return (
+    <nav className="stepper-horizontal" aria-label="Form progress">
+      <ol>
+        {steps.map((s) => {
+          const state = s.id < current ? 'complete' : s.id === current ? 'active' : 'upcoming';
+          return (
+            <li key={s.id} className={`stepper-h-item stepper-h-${state}`}>
+              <span className="stepper-h-dot" aria-hidden />
+              <span className="stepper-h-label">{s.label}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
 export function useFieldId(prefix: string) {
   const uid = useId();
   return `${prefix}-${uid}`.replace(/:/g, '');

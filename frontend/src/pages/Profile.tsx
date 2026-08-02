@@ -1,66 +1,80 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '../api/client'
-import { Button, Skeleton } from '../components/ui/Primitives'
+import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { intakeApi } from '../api/intake';
+import { Button, PageHeader, Skeleton } from '../components/ui/Primitives';
+
+function StatusRow({ label, done }: { label: string; done: boolean }) {
+  return (
+    <div className={`status-row${done ? ' done' : ''}`}>
+      <span className="status-dot" aria-hidden />
+      <span>{label}</span>
+      <span className="status-badge">{done ? 'Complete' : 'Pending'}</span>
+    </div>
+  );
+}
 
 export default function Profile() {
-  const queryClient = useQueryClient();
-  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: api.profile });
-  const [form, setForm] = useState<Record<string, string>>({});
-
-  const updateMutation = useMutation({
-    mutationFn: api.updateProfile,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
-    },
+  const { data: status, isLoading } = useQuery({
+    queryKey: ['intake-status'],
+    queryFn: intakeApi.status,
   });
 
-  const rerankMutation = useMutation({
-    mutationFn: api.rerank,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['feed'] }),
-  });
+  if (isLoading) {
+    return (
+      <>
+        <PageHeader eyebrow="Your profile" title="Profile" />
+        <Skeleton className="skeleton-block" />
+      </>
+    );
+  }
 
-  if (!profile) return <Skeleton className="skeleton-block" />;
-
-  const val = (key: keyof typeof profile) =>
-    (form[key] as string) ??
-    (Array.isArray(profile[key]) ? (profile[key] as string[]).join(', ') : String(profile[key] ?? ''));
+  const hasSubmission = status?.has_form_answers ?? false;
+  const pipelineReady = status?.has_structured_profile ?? false;
 
   return (
     <>
-      <div className="page-header intake-header">
-        <h2>Profile & Goals</h2>
-        <Link to="/profile/intake" className="btn">Full profile intake</Link>
-      </div>
-      <p className="intake-subtitle" style={{ marginTop: '-1rem', marginBottom: '1rem' }}>
-        Quick edit below, or use full intake to build your LLM extraction pipeline.
-      </p>
-      <div className="detail-panel profile-form" style={{ maxWidth: 600 }}>
-        <label>Long-term goals</label>
-        <textarea className="form-control" value={val('long_term_goals')} onChange={(e) => setForm({ ...form, long_term_goals: e.target.value })} />
-        <label>Research interests (comma-separated)</label>
-        <input className="form-control" value={val('research_interests')} onChange={(e) => setForm({ ...form, research_interests: e.target.value })} />
-        <label>Skills (comma-separated)</label>
-        <input className="form-control" value={val('skills')} onChange={(e) => setForm({ ...form, skills: e.target.value })} />
-        <label>Target regions</label>
-        <input className="form-control" value={val('target_regions')} onChange={(e) => setForm({ ...form, target_regions: e.target.value })} />
-        <label>Target universities</label>
-        <input className="form-control" value={val('target_universities')} onChange={(e) => setForm({ ...form, target_universities: e.target.value })} />
-        <label>Degree level</label>
-        <input className="form-control" value={val('degree_level')} onChange={(e) => setForm({ ...form, degree_level: e.target.value })} />
-        <div className="actions-row">
-          <Button variant="primary" onClick={() => updateMutation.mutate({
-            long_term_goals: val('long_term_goals'),
-            research_interests: val('research_interests').split(',').map((s) => s.trim()).filter(Boolean),
-            skills: val('skills').split(',').map((s) => s.trim()).filter(Boolean),
-            target_regions: val('target_regions').split(',').map((s) => s.trim()).filter(Boolean),
-            target_universities: val('target_universities').split(',').map((s) => s.trim()).filter(Boolean),
-            degree_level: val('degree_level'),
-          })} disabled={updateMutation.isPending}>Save & re-rank</Button>
-          <Button variant="secondary" onClick={() => rerankMutation.mutate()} disabled={rerankMutation.isPending}>Re-rank only</Button>
-        </div>
+      <PageHeader
+        eyebrow="Your profile"
+        title="Profile"
+        lead="Build your candidate profile once — it powers opportunity matching, filtering, and ingest sources."
+        actions={
+          <Link to="/profile/setup">
+            <Button variant="gold">{hasSubmission ? 'Edit profile setup' : 'Start profile setup'}</Button>
+          </Link>
+        }
+      />
+
+      <div className="profile-hub-grid">
+        <section className="card profile-status-card">
+          <h3 className="panel-title">Pipeline status</h3>
+          <p className="muted-text profile-status-lead">
+            After submitting the form, run the backend scripts to extract CV data and compile filter rules.
+          </p>
+          <div className="status-list">
+            <StatusRow label="Intake form submitted" done={hasSubmission} />
+            <StatusRow label="CV on file" done={status?.has_cv ?? false} />
+            <StatusRow label="Structured profile (L2)" done={pipelineReady} />
+            <StatusRow label="Compiled artifacts (L3)" done={false} />
+          </div>
+          {status?.updated_at && (
+            <p className="muted-text small" style={{ marginTop: '1rem' }}>
+              Last saved: {new Date(status.updated_at).toLocaleString()}
+            </p>
+          )}
+        </section>
+
+        <section className="card profile-next-card">
+          <h3 className="panel-title">Next steps</h3>
+          <ol className="next-steps-list">
+            <li>Complete all six sections in <strong>Profile setup</strong> and submit.</li>
+            <li>Run <code>python scripts/prefill_structured.py</code> in the backend.</li>
+            <li>Use the CV extraction prompt, then <code>merge_profile.py</code> and <code>compile_profile.py</code>.</li>
+            <li>Run <code>check_profile_ready.py</code> before starting ingest.</li>
+          </ol>
+          <Link to="/profile/setup">
+            <Button variant="primary">{hasSubmission ? 'Continue setup' : 'Begin setup'}</Button>
+          </Link>
+        </section>
       </div>
     </>
   );

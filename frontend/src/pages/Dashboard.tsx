@@ -1,12 +1,13 @@
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { api, Opportunity } from '../api/client';
+import { api } from '../api/client';
+import { intakeApi } from '../api/intake';
 import OpportunityCard from '../components/OpportunityCard';
-import { KpiStrip, PageHeader, Skeleton } from '../components/ui/Primitives';
+import { Button, KpiStrip, PageHeader, Skeleton } from '../components/ui/Primitives';
 
 export default function Dashboard() {
-  const navigate = useNavigate();
   const { data, isLoading } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard });
+  const { data: intakeStatus } = useQuery({ queryKey: ['intake-status'], queryFn: intakeApi.status });
 
   if (isLoading) {
     return (
@@ -20,23 +21,42 @@ export default function Dashboard() {
 
   const updated = data?.updated_cards.length ?? 0;
   const inProgress = data?.in_progress.length ?? 0;
-  const learning = data?.upskilling.length ?? 0;
   const unread = data?.notifications.filter((n) => !n.is_read).length ?? 0;
+  const profileComplete = intakeStatus?.has_structured_profile ?? false;
 
   return (
     <>
       <PageHeader
         eyebrow="Overview"
         title="Dashboard"
-        lead="Your week at a glance — new matches, active applications, and prep."
+        lead="Your command center — profile status, priority matches, and active applications."
+        actions={
+          !profileComplete ? (
+            <Link to="/profile/setup">
+              <Button variant="gold">Complete profile</Button>
+            </Link>
+          ) : undefined
+        }
       />
+
+      {!profileComplete && (
+        <div className="banner banner-gold">
+          <div>
+            <strong>Profile setup incomplete</strong>
+            <p className="muted-text">Finish your profile to unlock personalized opportunity matching.</p>
+          </div>
+          <Link to="/profile/setup">
+            <Button variant="primary">Go to setup</Button>
+          </Link>
+        </div>
+      )}
 
       <KpiStrip
         items={[
           { label: 'New matches', value: updated },
           { label: 'In progress', value: inProgress },
-          { label: 'Learning items', value: learning },
           { label: 'Unread alerts', value: unread },
+          { label: 'Profile ready', value: profileComplete ? 'Yes' : 'No' },
         ]}
       />
 
@@ -46,11 +66,14 @@ export default function Dashboard() {
           {data?.updated_cards.length ? (
             <div className="card-list">
               {data.updated_cards.slice(0, 4).map((opp) => (
-                <OpportunityCard key={opp.id} opportunity={opp} onClick={() => navigate(`/opportunities/${opp.id}`)} />
+                <OpportunityCard key={opp.id} opportunity={opp} />
               ))}
             </div>
           ) : (
-            <p className="muted-text">No new high-priority matches. Check back after updating your profile.</p>
+            <p className="muted-text">
+              No matches yet. Complete your{' '}
+              <Link to="/profile/setup">profile setup</Link> and run the pipeline scripts to start ingest.
+            </p>
           )}
         </section>
 
@@ -60,30 +83,11 @@ export default function Dashboard() {
             {data?.in_progress.length ? (
               <div className="card-list compact">
                 {data.in_progress.map((opp) => (
-                  <OpportunityCard key={opp.id} opportunity={opp} onClick={() => navigate(`/opportunities/${opp.id}`)} />
+                  <OpportunityCard key={opp.id} opportunity={opp} />
                 ))}
               </div>
             ) : (
               <p className="muted-text">No active applications</p>
-            )}
-          </section>
-
-          <section className="card dashboard-panel">
-            <h3 className="panel-title">Upskilling</h3>
-            {data?.upskilling.length ? (
-              data.upskilling.map((item) => (
-                <div key={item.id} className="learning-row">
-                  <div className="learning-row-head">
-                    <span>{item.title}</span>
-                    <span className="muted-text">{item.progress_percent}%</span>
-                  </div>
-                  <div className="progress-bar">
-                    <div className="progress-bar-fill" style={{ width: `${item.progress_percent}%` }} />
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="muted-text">No learning items tracked</p>
             )}
           </section>
 

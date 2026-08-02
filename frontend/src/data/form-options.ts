@@ -78,6 +78,51 @@ export const FELLOWSHIP_TYPES = [
 
 export const STUDY_YEARS = ['1st year', '2nd year', '3rd year', '4th year', 'Final year'] as const;
 
+export const PROGRAM_STYLE_OPTIONS = [
+  { value: 'research_aligned', label: 'Research-aligned (thesis / lab)' },
+  { value: 'coursework', label: 'Coursework-heavy' },
+  { value: 'no_preference', label: 'No strong preference' },
+] as const;
+
+export const FUNDING_REQUIREMENT_OPTIONS = [
+  { value: 'full_only', label: 'Fully funded only' },
+  { value: 'partial_ok', label: 'Partial funding OK' },
+  { value: 'self_fund_possible', label: 'Self-fund possible' },
+] as const;
+
+export const OTHER_LANGUAGE_OPTIONS = [
+  'German',
+  'French',
+  'Spanish',
+  'Italian',
+  'Dutch',
+  'Mandarin',
+  'Japanese',
+  'Arabic',
+  'Hindi',
+] as const;
+
+/** Common priority countries for chip picker (names match filter region aliases). */
+export const PRIORITY_COUNTRY_CHIPS = [
+  'Germany',
+  'United Kingdom',
+  'United States',
+  'Canada',
+  'Australia',
+  'Netherlands',
+  'Switzerland',
+  'France',
+  'Sweden',
+  'Norway',
+  'Japan',
+  'Singapore',
+] as const;
+
+export const DISCOVERY_MODE_OPTIONS = [
+  { value: 'open', label: 'Open discovery — show best funded matches anywhere' },
+  { value: 'target_list', label: 'Focus on specific universities I list' },
+] as const;
+
 export const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',

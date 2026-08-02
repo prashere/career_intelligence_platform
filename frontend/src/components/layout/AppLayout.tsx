@@ -2,12 +2,9 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 
 export const NAV_ITEMS = [
-  { to: '/', label: 'Opportunities', end: true as const },
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/planning', label: 'Weekly Plan' },
-  { to: '/learning', label: 'Upskilling' },
-  { to: '/discover', label: 'Network' },
-  { to: '/profile/intake', label: 'Profile' },
+  { to: '/', label: 'Dashboard', end: true as const },
+  { to: '/profile', label: 'Profile', end: false as const },
+  { to: '/profile/setup', label: 'Profile setup', end: false as const },
 ] as const;
 
 interface SidebarNavProps {
@@ -40,17 +37,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <aside className={`sidebar${mobileOpen ? ' open' : ''}`}>
         <div className="brand">
           <span className="brand-mark" aria-hidden>
-            ◆
+            CI
           </span>
           <div>
             <h1>Career Intelligence</h1>
-            <p className="brand-tagline">Funded graduate opportunities, matched to you</p>
+            {/* <p className="brand-tagline">Funded opportunities, matched to you</p> */}
           </div>
         </div>
         <SidebarNav onNavigate={() => setMobileOpen(false)} />
         <footer className="sidebar-footer">
-          <NavLink to="/profile/intake" className="sidebar-cta" onClick={() => setMobileOpen(false)}>
-            Complete your profile →
+          <NavLink to="/profile/setup" className="sidebar-cta" onClick={() => setMobileOpen(false)}>
+            Complete profile setup →
           </NavLink>
         </footer>
       </aside>

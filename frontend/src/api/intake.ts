@@ -3,6 +3,7 @@ import type {
   IntakeFormData,
   IntakePromptResult,
   IntakeStatus,
+  IntakeSubmitResult,
   IntakeValidateResult,
 } from '../types/intake';
 
@@ -30,7 +31,7 @@ export const intakeApi = {
 
   getDraft: () => request<IntakeDraft>('/api/v1/profile/intake/draft'),
 
-  saveDraft: (step: number, form: Partial<IntakeFormData>, cv_text?: string) =>
+  saveDraft: (step: number, form: Record<string, unknown>, cv_text?: string) =>
     request<IntakeDraft>('/api/v1/profile/intake/draft', {
       method: 'PUT',
       body: JSON.stringify({ step, form, cv_text }),
@@ -40,6 +41,32 @@ export const intakeApi = {
     request<{ ok: boolean; length: number }>('/api/v1/profile/intake/cv', {
       method: 'PUT',
       body: JSON.stringify({ cv_text }),
+    }),
+
+  uploadCvFile: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/api/v1/profile/intake/cv/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      try {
+        const json = JSON.parse(text);
+        throw new Error(typeof json.detail === 'string' ? json.detail : text);
+      } catch (e) {
+        if (e instanceof Error && e.message !== text) throw e;
+        throw new Error(text || res.statusText);
+      }
+    }
+    return res.json() as Promise<{ ok: boolean; text: string; length: number; filename: string }>;
+  },
+
+  submit: (step: number, form: Record<string, unknown>, cv_text: string) =>
+    request<IntakeSubmitResult>('/api/v1/profile/intake/submit', {
+      method: 'POST',
+      body: JSON.stringify({ step, form, cv_text }),
     }),
 
   generateExtractionPrompt: (step: number, form: Partial<IntakeFormData>, cv_text: string) =>
