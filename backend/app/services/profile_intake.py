@@ -135,11 +135,14 @@ def form_answers_to_markdown(form: dict[str, Any]) -> str:
     lines = [
         "## Step 1 — Identity",
         f"1.1 Full name: {form.get('full_name', '')}",
-        f"1.2 Nationality: {form.get('nationality', '')}",
-        f"1.3 Current country: {form.get('current_country', '')}",
-        f"1.4 LinkedIn: {form.get('linkedin_url', '')}",
-        f"1.5 GitHub: {form.get('github_url', '') or '—'}",
-        f"1.6 Website: {form.get('website_url', '') or '—'}",
+        f"1.2 Email: {form.get('email', '') or '—'}",
+        f"1.3 Nationality (code): {form.get('nationality_code', form.get('nationality', ''))}",
+        f"1.4 Current country (code): {form.get('current_country_code', form.get('current_country', ''))}",
+        f"1.5 LinkedIn: {form.get('linkedin_url', '')}",
+        f"1.6 GitHub: {form.get('github_url', '') or '—'}",
+        f"1.7 Website: {form.get('website_url', '') or '—'}",
+        f"1.8 Google Scholar: {form.get('google_scholar_url', '') or '—'}",
+        f"1.9 ORCID: {form.get('orcid', '') or '—'}",
         "",
         "## Step 3 — Education & language",
         f"3.1 Highest degree: {form.get('degree_level', '')}",
@@ -218,23 +221,6 @@ def save_form_answers_markdown(form: dict[str, Any]) -> Path:
     return path
 
 
-def build_extraction_prompt(form: dict[str, Any], cv_text: str) -> str:
-    template = _extract_prompt_block("llm-extraction-prompt.md")
-    form_block = form_answers_to_markdown(form)
-    save_form_answers_markdown(form)
-    if cv_text.strip():
-        save_cv_text(cv_text)
-    return (
-        template.replace("{{FORM_ANSWERS}}", form_block).replace("{{CV_TEXT}}", cv_text.strip())
-    )
-
-
-def build_compile_prompt(structured: dict[str, Any]) -> str:
-    template = _extract_prompt_block("llm-compile-prompt.md")
-    json_block = json.dumps(structured, indent=2, ensure_ascii=False)
-    return template.replace("{{STRUCTURED_PROFILE_JSON}}", json_block)
-
-
 def validate_structured_profile(data: dict[str, Any]) -> tuple[StructuredProfile | None, list[str]]:
     try:
         profile = StructuredProfile.model_validate(data)
@@ -269,14 +255,61 @@ def load_structured_profile() -> dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _raw_submission_path() -> Path:
+    return intake_dir() / "raw-submission.json"
+
+
+def _submissions_archive_dir() -> Path:
+    path = intake_dir() / "submissions"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def save_raw_submission(form: dict[str, Any], cv_text: str) -> tuple[Path, str]:
+    """Persist L1 raw user input as JSON. Returns (path, submission_id)."""
+    submitted_at = datetime.now(timezone.utc)
+    submission_id = submitted_at.strftime("%Y%m%dT%H%M%SZ")
+    payload = {
+        "schema_version": "1.0",
+        "submission_id": submission_id,
+        "submitted_at": submitted_at.isoformat(),
+        "source": "web_ui",
+        "form": form,
+        "cv_text": cv_text,
+        "cv_char_count": len(cv_text),
+    }
+    main_path = _raw_submission_path()
+    main_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    archive_path = _submissions_archive_dir() / f"{submission_id}.json"
+    archive_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    save_form_answers_markdown(form)
+    if cv_text.strip():
+        save_cv_text(cv_text)
+    return main_path, submission_id
+
+
+def load_raw_submission() -> dict[str, Any] | None:
+    path = _raw_submission_path()
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def intake_status() -> dict[str, Any]:
     draft = load_draft()
+    raw = load_raw_submission()
+    compiled = compiled_dir()
     return {
         "has_draft": draft is not None,
         "current_step": (draft or {}).get("step", 0),
         "has_cv": _cv_path().exists() or bool((draft or {}).get("cv_text")),
         "has_form_answers": (intake_dir() / "form-answers.md").exists(),
+        "has_raw_submission": _raw_submission_path().exists(),
+        "has_prefill": (intake_dir() / "structured-profile.prefill.json").exists(),
         "has_extraction_output": _extraction_output_path().exists(),
         "has_structured_profile": _structured_path().exists(),
+        "has_compiled_artifacts": (compiled / "filter_config.json").exists(),
+        "has_ingestion_sources": (compiled / "ingestion_sources.json").exists(),
         "updated_at": (draft or {}).get("updated_at"),
+        "last_submitted_at": (raw or {}).get("submitted_at"),
     }
