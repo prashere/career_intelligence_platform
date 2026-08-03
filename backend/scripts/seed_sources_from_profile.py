@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Seed opportunity_sources from compiled ingestion_sources.json.
 
+URLs come from ingestion_sources.json (compiled from app/data/source-registry.yaml).
+
 Usage:
     python scripts/seed_sources_from_profile.py
     python scripts/seed_sources_from_profile.py path/to/ingestion_sources.json

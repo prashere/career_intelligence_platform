@@ -7,18 +7,17 @@ from pathlib import Path
 import pytest
 import yaml
 
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
+from app.source_registry_paths import SOURCE_REGISTRY_PATH
 
 
 @pytest.fixture
 def source_registry() -> dict:
-    path = FIXTURES_DIR / "source-registry.yaml"
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    return yaml.safe_load(SOURCE_REGISTRY_PATH.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(autouse=True)
 def patch_source_registry(monkeypatch: pytest.MonkeyPatch, source_registry: dict) -> None:
-    """Tests must not depend on docs/profile/source-registry.yaml being present."""
+    """Use bundled registry in tests (not docs/)."""
     from app.services import profile_pipeline as pipeline
 
     monkeypatch.setattr(pipeline, "load_source_registry", lambda: source_registry)

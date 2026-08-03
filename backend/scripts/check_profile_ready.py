@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Verify profile package is ready for Sprint 1 ingest.
 
+Expects L3 artifacts under docs/profile/compiled/ and registry at
+backend/app/data/source-registry.yaml (used during prefill/compile).
+
 Usage:
     python scripts/check_profile_ready.py
     python scripts/check_profile_ready.py --expected-sources 4

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Build structured-profile.prefill.json from raw-submission.json (no LLM).
 
+Aggregator selection reads backend/app/data/source-registry.yaml (git-tracked).
+
 Usage:
     python scripts/prefill_structured.py
     python scripts/prefill_structured.py path/to/raw-submission.json
@@ -12,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.source_registry_paths import SOURCE_REGISTRY_PATH
 from app.services.profile_pipeline import prefill_from_submission, save_prefill
 
 
@@ -32,6 +35,7 @@ def main() -> int:
 
     path = save_prefill(data)
     print(f"Prefill saved to: {path}")
+    print(f"  Registry: {SOURCE_REGISTRY_PATH}")
     print(f"  Discovery mode: {data.get('preferences', {}).get('discovery_mode', 'open')}")
     print(f"  Aggregators selected: {len(data.get('sources', {}).get('aggregators', []))}")
     for agg in data.get("sources", {}).get("aggregators", []):

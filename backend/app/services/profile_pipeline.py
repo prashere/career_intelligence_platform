@@ -28,12 +28,16 @@ from app.services.profile_intake import (
     validate_structured_profile,
     _extract_prompt_block,
 )
+from app.source_registry_paths import SOURCE_REGISTRY_PATH
 
 # Form chip labels → registry IDs (non-RSS chips map to None)
 SEARCH_CHIP_TO_REGISTRY: dict[str, str | None] = {
     "Scholars4Dev": "scholars4dev",
     "DAAD": "daad",
     "ProFellow": "profellow",
+    "Opportunity Desk": "opportunity_desk",
+    "FundsForNGOs": "fundsforngos",
+    "Mladiinfo": "mladiinfo",
     "University websites": None,
     "LinkedIn": None,
     "FindAPhD / MastersPortal": None,
@@ -74,7 +78,7 @@ PREFILL_PATH = "structured-profile.prefill.json"
 
 
 def _registry_path() -> Path:
-    return project_root() / "docs" / "profile" / "source-registry.yaml"
+    return SOURCE_REGISTRY_PATH
 
 
 def _prefill_path() -> Path:
@@ -88,7 +92,10 @@ def _profile_truth_path() -> Path:
 def load_source_registry() -> dict[str, Any]:
     path = _registry_path()
     if not path.exists():
-        raise FileNotFoundError(f"Source registry not found: {path}")
+        raise FileNotFoundError(
+            f"Source registry not found: {path}. "
+            "Expected git-tracked file at backend/app/data/source-registry.yaml"
+        )
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
