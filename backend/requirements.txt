@@ -21,6 +21,9 @@ langchain-openai==0.2.14
 tiktoken==0.8.0
 pgvector==0.3.6
 python-multipart==0.0.20
+bcrypt==4.2.1
+python-jose[cryptography]==3.3.0
+email-validator==2.2.0
 pypdf==5.1.0
 icalendar==6.1.0
 resend==2.6.0
