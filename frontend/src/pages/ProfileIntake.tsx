@@ -299,18 +299,11 @@ export default function ProfileIntake() {
         <div className="success-card">
           <div className="success-icon" aria-hidden>✓</div>
           <h2>Profile submitted</h2>
-          <p>
-            Your answers and CV are saved. Run the backend pipeline scripts to build your structured
-            profile and compiled filter rules.
-          </p>
+          <p>Your answers and CV are saved. Check your profile page for next steps.</p>
           <dl className="success-meta">
             <div>
-              <dt>Submission ID</dt>
+              <dt>Reference</dt>
               <dd><code>{submitted.submission_id}</code></dd>
-            </div>
-            <div>
-              <dt>Saved to</dt>
-              <dd><code>{submitted.saved_to}</code></dd>
             </div>
           </dl>
           <div className="success-actions">
@@ -631,7 +624,7 @@ export default function ProfileIntake() {
           <>
             <FormSection
               title="Discovery & sources"
-              description="How we search and which aggregators to weight when seeding your feed."
+              description="Where and how you'd like us to look for opportunities."
             >
               <FormField label="Discovery mode">
                 <ChipGroup
@@ -641,7 +634,7 @@ export default function ProfileIntake() {
                   multi={false}
                 />
               </FormField>
-              <FormField label="Sources you already use" hint="Improves aggregator scoring in the pipeline">
+              <FormField label="Sources you already use" hint="Optional — helps prioritize familiar channels">
                 <ChipGroup
                   options={SEARCH_SOURCE_OPTIONS}
                   selected={form.search_sources}
