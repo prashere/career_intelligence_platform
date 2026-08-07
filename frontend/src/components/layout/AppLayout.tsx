@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
+import { Button } from '../ui/Primitives';
 
-export const NAV_ITEMS = [
+const BASE_NAV = [
   { to: '/', label: 'Dashboard', end: true as const },
   { to: '/profile', label: 'Profile', end: false as const },
   { to: '/profile/setup', label: 'Profile setup', end: false as const },
@@ -12,9 +14,14 @@ interface SidebarNavProps {
 }
 
 export function SidebarNav({ onNavigate }: SidebarNavProps) {
+  const { isAdmin } = useAuth();
+  const items = isAdmin
+    ? [...BASE_NAV, { to: '/admin/schedulers', label: 'Background tasks', end: false as const }]
+    : BASE_NAV;
+
   return (
     <nav className="sidebar-nav" aria-label="Main">
-      {NAV_ITEMS.map(({ to, label, ...rest }) => (
+      {items.map(({ to, label, ...rest }) => (
         <NavLink
           key={to}
           to={to}
@@ -29,26 +36,53 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
   );
 }
 
+function userInitials(name?: string | null, email?: string): string {
+  if (name?.trim()) {
+    const parts = name.trim().split(/\s+/);
+    return parts.length >= 2
+      ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+      : parts[0].slice(0, 2).toUpperCase();
+  }
+  return (email?.[0] ?? '?').toUpperCase();
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user, logout, isAdmin } = useAuth();
+  const displayName = user?.name?.trim() || user?.email?.split('@')[0] || 'Account';
 
   return (
     <div className="app-shell">
       <aside className={`sidebar${mobileOpen ? ' open' : ''}`}>
-        <div className="brand">
-          <span className="brand-mark" aria-hidden>
-            CI
-          </span>
-          <div>
-            <h1>Career Intelligence</h1>
-            {/* <p className="brand-tagline">Funded opportunities, matched to you</p> */}
+        <div className="sidebar-brand">
+          <div className="brand">
+            <span className="brand-mark" aria-hidden>
+              CI
+            </span>
+            <div>
+              <h1>Career Intelligence</h1>
+            </div>
           </div>
         </div>
-        <SidebarNav onNavigate={() => setMobileOpen(false)} />
+
+        <div className="sidebar-nav-wrap">
+          <SidebarNav onNavigate={() => setMobileOpen(false)} />
+        </div>
+
         <footer className="sidebar-footer">
-          <NavLink to="/profile/setup" className="sidebar-cta" onClick={() => setMobileOpen(false)}>
-            Complete profile setup →
-          </NavLink>
+          <div className="sidebar-user-card">
+            <span className="sidebar-avatar" aria-hidden>
+              {userInitials(user?.name, user?.email)}
+            </span>
+            <div className="sidebar-user-meta">
+              <p className="sidebar-user-name">{displayName}</p>
+              <p className="sidebar-user-email">{user?.email}</p>
+              {isAdmin && <span className="badge badge-admin">Admin</span>}
+            </div>
+          </div>
+          <Button variant="ghost" className="sidebar-logout" onClick={logout}>
+            Sign out
+          </Button>
         </footer>
       </aside>
 
