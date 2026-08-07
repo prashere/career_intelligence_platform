@@ -29,7 +29,7 @@ export default function Dashboard() {
       <PageHeader
         eyebrow="Overview"
         title="Dashboard"
-        lead="Your command center — profile status, priority matches, and active applications."
+        lead="Matches, deadlines, and applications at a glance."
         actions={
           !profileComplete ? (
             <Link to="/profile/setup">
@@ -71,8 +71,8 @@ export default function Dashboard() {
             </div>
           ) : (
             <p className="muted-text">
-              No matches yet. Complete your{' '}
-              <Link to="/profile/setup">profile setup</Link> and run the pipeline scripts to start ingest.
+              No matches yet.{' '}
+              <Link to="/profile/setup">Complete your profile</Link> to get started.
             </p>
           )}
         </section>
