@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import settings
 from app.database import Base
-from app.models import *  # noqa: F401, F403
+import app.models.core  # noqa: F401 — core tables only; legacy models migrate incrementally
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url_sync)
