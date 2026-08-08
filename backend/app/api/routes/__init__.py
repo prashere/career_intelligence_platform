@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.career_agent import approve_pending_action, create_calendar_event, run_agent
+from app.api.deps import get_current_user_profile, require_admin
 from app.database import get_db
 from app.models import (
     Community,
@@ -16,6 +18,7 @@ from app.models import (
     Requirement,
     SourceType,
     UserOpportunity,
+    UserProfile,
 )
 from app.rag.retriever import answer_question, index_opportunity
 from app.schemas import (
@@ -49,7 +52,7 @@ from app.schemas import (
 )
 from app.services.ingestion import fetch_source, normalize_raw_documents
 from app.services.opportunities import (
-    get_default_user,
+    empty_feed,
     get_feed,
     get_opportunity_detail,
     get_or_create_application,
@@ -62,6 +65,14 @@ from app.workers.ingest.tasks import fetch_all_sources_task, normalize_all_task
 router = APIRouter()
 
 
+async def _safe_feed(db: AsyncSession, profile_id: str, **kwargs):
+    try:
+        return await get_feed(db, profile_id, **kwargs)
+    except ProgrammingError:
+        await db.rollback()
+        return empty_feed()
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(status="ok")
@@ -72,15 +83,18 @@ async def feed(
     search: str | None = Query(None),
     status: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
 ):
-    user = await get_default_user(db)
-    return await get_feed(db, user.id, search=search, status=status)
+    return await _safe_feed(db, profile.id, search=search, status=status)
 
 
 @router.get("/opportunities/{opportunity_id}", response_model=OpportunityResponse)
-async def opportunity_detail(opportunity_id: str, db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    detail = await get_opportunity_detail(db, user.id, opportunity_id)
+async def opportunity_detail(
+    opportunity_id: str,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    detail = await get_opportunity_detail(db, profile.id, opportunity_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Opportunity not found")
     return detail
@@ -91,9 +105,9 @@ async def update_status(
     opportunity_id: str,
     body: UserOpportunityUpdate,
     db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
 ):
-    user = await get_default_user(db)
-    uo = await update_user_opportunity(db, user.id, opportunity_id, body.status, body.notes)
+    uo = await update_user_opportunity(db, profile.id, opportunity_id, body.status, body.notes)
     return {"id": uo.id, "status": uo.status.value}
 
 
@@ -107,11 +121,14 @@ async def export_calendar(opportunity_id: str, db: AsyncSession = Depends(get_db
 
 
 @router.get("/opportunities/{opportunity_id}/requirements", response_model=list[RequirementResponse])
-async def list_requirements(opportunity_id: str, db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
+async def list_requirements(
+    opportunity_id: str,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
     result = await db.execute(
         select(UserOpportunity).where(
-            UserOpportunity.user_id == user.id,
+            UserOpportunity.user_id == profile.id,
             UserOpportunity.opportunity_id == opportunity_id,
         )
     )
@@ -124,10 +141,12 @@ async def list_requirements(opportunity_id: str, db: AsyncSession = Depends(get_
 
 @router.post("/opportunities/{opportunity_id}/requirements", response_model=RequirementResponse)
 async def add_requirement(
-    opportunity_id: str, body: RequirementCreate, db: AsyncSession = Depends(get_db)
+    opportunity_id: str,
+    body: RequirementCreate,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
 ):
-    user = await get_default_user(db)
-    uo = await update_user_opportunity(db, user.id, opportunity_id)
+    uo = await update_user_opportunity(db, profile.id, opportunity_id)
     req = Requirement(user_opportunity_id=uo.id, title=body.title, due_date=body.due_date)
     db.add(req)
     await db.commit()
@@ -150,40 +169,52 @@ async def update_requirement(
 
 
 @router.post("/opportunities/{opportunity_id}/chat", response_model=ChatResponse)
-async def chat(opportunity_id: str, body: ChatRequest, db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    profile_ctx = f"Goals: {user.long_term_goals}. Interests: {user.research_interests}"
+async def chat(
+    opportunity_id: str,
+    body: ChatRequest,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    profile_ctx = f"Goals: {profile.long_term_goals}. Interests: {profile.research_interests}"
     reply, citations = await answer_question(db, opportunity_id, body.message, profile_ctx)
     return ChatResponse(reply=reply, citations=citations)
 
 
 @router.post("/opportunities/{opportunity_id}/agent", response_model=ChatResponse)
-async def agent_chat(opportunity_id: str, body: ChatRequest, db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
+async def agent_chat(
+    opportunity_id: str,
+    body: ChatRequest,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
     result = await db.execute(
         select(UserOpportunity).where(
-            UserOpportunity.user_id == user.id,
+            UserOpportunity.user_id == profile.id,
             UserOpportunity.opportunity_id == opportunity_id,
         )
     )
     uo = result.scalar_one_or_none()
     profile_data = {
-        "goals": user.long_term_goals,
-        "interests": user.research_interests,
-        "projects": user.projects,
-        "connections": user.connections,
-        "universities": user.target_universities,
+        "goals": profile.long_term_goals,
+        "interests": profile.research_interests,
+        "projects": profile.projects,
+        "connections": profile.connections,
+        "universities": profile.target_universities,
     }
     reply, citations, pending = await run_agent(
-        db, user.id, opportunity_id, body.message, profile_data, uo.id if uo else None
+        db, profile.id, opportunity_id, body.message, profile_data, uo.id if uo else None
     )
     return ChatResponse(reply=reply, citations=citations, pending_actions=pending)
 
 
 @router.post("/agent/threads/{thread_id}/approve/{action_index}")
-async def approve_action(thread_id: str, action_index: int, db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    result = await approve_pending_action(db, thread_id, action_index, user_id=user.id)
+async def approve_action(
+    thread_id: str,
+    action_index: int,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    result = await approve_pending_action(db, thread_id, action_index, user_id=profile.id)
     return {"result": result}
 
 
@@ -194,54 +225,80 @@ async def index_opp(opportunity_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/profile", response_model=UserProfileResponse)
-async def get_profile(db: AsyncSession = Depends(get_db)):
-    return await get_default_user(db)
+async def get_profile(profile: UserProfile = Depends(get_current_user_profile)):
+    return profile
 
 
 @router.patch("/profile", response_model=UserProfileResponse)
-async def update_profile(body: UserProfileUpdate, db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
+async def update_profile(
+    body: UserProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
     for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(user, field, value)
+        setattr(profile, field, value)
     await db.commit()
-    await rank_opportunities_for_user(db, user.id)
-    await db.refresh(user)
-    return user
+    try:
+        await rank_opportunities_for_user(db, profile.id)
+    except ProgrammingError:
+        await db.rollback()
+    await db.refresh(profile)
+    return profile
 
 
 @router.post("/profile/rank")
-async def rerank(db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    count = await rank_opportunities_for_user(db, user.id)
+async def rerank(
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    try:
+        count = await rank_opportunities_for_user(db, profile.id)
+    except ProgrammingError:
+        await db.rollback()
+        count = 0
     return {"ranked": count}
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
-async def dashboard(db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    feed = await get_feed(db, user.id)
+async def dashboard(
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    feed = await _safe_feed(db, profile.id)
 
     updated = [o for o in feed.scholarships + feed.fellowships + feed.other if o.status in (None, "new")]
     in_progress = [o for o in feed.scholarships + feed.fellowships + feed.other if o.status == "in_progress"]
 
-    learning_result = await db.execute(select(LearningItem).where(LearningItem.user_id == user.id))
-    notif_result = await db.execute(
-        select(Notification).where(Notification.user_id == user.id).order_by(Notification.created_at.desc()).limit(20)
-    )
+    try:
+        learning_result = await db.execute(select(LearningItem).where(LearningItem.user_id == profile.id))
+        notif_result = await db.execute(
+            select(Notification)
+            .where(Notification.user_id == profile.id)
+            .order_by(Notification.created_at.desc())
+            .limit(20)
+        )
+        upskilling = learning_result.scalars().all()
+        notifications = notif_result.scalars().all()
+    except ProgrammingError:
+        await db.rollback()
+        upskilling = []
+        notifications = []
 
     return DashboardResponse(
         updated_cards=updated[:20],
         in_progress=in_progress,
-        upskilling=learning_result.scalars().all(),
-        notifications=notif_result.scalars().all(),
+        upskilling=upskilling,
+        notifications=notifications,
     )
 
 
 @router.get("/notifications", response_model=list[NotificationResponse])
-async def notifications(db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
+async def notifications(
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
     result = await db.execute(
-        select(Notification).where(Notification.user_id == user.id).order_by(Notification.created_at.desc())
+        select(Notification).where(Notification.user_id == profile.id).order_by(Notification.created_at.desc())
     )
     return result.scalars().all()
 
@@ -274,16 +331,21 @@ async def update_application(
 
 
 @router.get("/learning", response_model=list[LearningItemResponse])
-async def list_learning(db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    result = await db.execute(select(LearningItem).where(LearningItem.user_id == user.id))
+async def list_learning(
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    result = await db.execute(select(LearningItem).where(LearningItem.user_id == profile.id))
     return result.scalars().all()
 
 
 @router.post("/learning", response_model=LearningItemResponse)
-async def create_learning(body: LearningItemCreate, db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    item = LearningItem(user_id=user.id, **body.model_dump())
+async def create_learning(
+    body: LearningItemCreate,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    item = LearningItem(user_id=profile.id, **body.model_dump())
     db.add(item)
     await db.commit()
     await db.refresh(item)
@@ -303,16 +365,21 @@ async def update_learning(item_id: str, body: LearningItemUpdate, db: AsyncSessi
 
 
 @router.get("/people", response_model=list[PersonResponse])
-async def list_people(db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    result = await db.execute(select(Person).where(Person.user_id == user.id))
+async def list_people(
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    result = await db.execute(select(Person).where(Person.user_id == profile.id))
     return result.scalars().all()
 
 
 @router.post("/people", response_model=PersonResponse)
-async def create_person(body: PersonCreate, db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    person = Person(user_id=user.id, **body.model_dump())
+async def create_person(
+    body: PersonCreate,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    person = Person(user_id=profile.id, **body.model_dump())
     db.add(person)
     await db.commit()
     await db.refresh(person)
@@ -320,16 +387,21 @@ async def create_person(body: PersonCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/communities", response_model=list[CommunityResponse])
-async def list_communities(db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    result = await db.execute(select(Community).where(Community.user_id == user.id))
+async def list_communities(
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    result = await db.execute(select(Community).where(Community.user_id == profile.id))
     return result.scalars().all()
 
 
 @router.post("/communities", response_model=CommunityResponse)
-async def create_community(body: CommunityCreate, db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    community = Community(user_id=user.id, **body.model_dump())
+async def create_community(
+    body: CommunityCreate,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    community = Community(user_id=profile.id, **body.model_dump())
     db.add(community)
     await db.commit()
     await db.refresh(community)
@@ -337,16 +409,21 @@ async def create_community(body: CommunityCreate, db: AsyncSession = Depends(get
 
 
 @router.get("/experiences", response_model=list[ExperienceResponse])
-async def list_experiences(db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    result = await db.execute(select(Experience).where(Experience.user_id == user.id))
+async def list_experiences(
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    result = await db.execute(select(Experience).where(Experience.user_id == profile.id))
     return result.scalars().all()
 
 
 @router.post("/experiences", response_model=ExperienceResponse)
-async def create_experience(body: ExperienceCreate, db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    exp = Experience(user_id=user.id, **body.model_dump())
+async def create_experience(
+    body: ExperienceCreate,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    exp = Experience(user_id=profile.id, **body.model_dump())
     db.add(exp)
     await db.commit()
     await db.refresh(exp)
@@ -354,19 +431,28 @@ async def create_experience(body: ExperienceCreate, db: AsyncSession = Depends(g
 
 
 @router.get("/planning/weekly", response_model=WeeklyFocusResponse)
-async def weekly_focus(db: AsyncSession = Depends(get_db)):
-    user = await get_default_user(db)
-    return await get_weekly_focus(db, user.id)
+async def weekly_focus(
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    return await get_weekly_focus(db, profile.id)
 
 
 @router.get("/sources", response_model=list[OpportunitySourceResponse])
-async def list_sources(db: AsyncSession = Depends(get_db)):
+async def list_sources(
+    db: AsyncSession = Depends(get_db),
+    _: UserProfile = Depends(require_admin),
+):
     result = await db.execute(select(OpportunitySource))
     return result.scalars().all()
 
 
 @router.post("/sources", response_model=OpportunitySourceResponse)
-async def create_source(body: OpportunitySourceCreate, db: AsyncSession = Depends(get_db)):
+async def create_source(
+    body: OpportunitySourceCreate,
+    db: AsyncSession = Depends(get_db),
+    _: UserProfile = Depends(require_admin),
+):
     source = OpportunitySource(
         name=body.name,
         url=body.url,
@@ -381,24 +467,31 @@ async def create_source(body: OpportunitySourceCreate, db: AsyncSession = Depend
 
 
 @router.post("/sources/{source_id}/fetch")
-async def trigger_fetch(source_id: str, db: AsyncSession = Depends(get_db)):
+async def trigger_fetch(
+    source_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: UserProfile = Depends(require_admin),
+):
     result = await fetch_source(db, source_id)
     return result
 
 
 @router.post("/ingest/normalize")
-async def trigger_normalize(db: AsyncSession = Depends(get_db)):
+async def trigger_normalize(
+    db: AsyncSession = Depends(get_db),
+    _: UserProfile = Depends(require_admin),
+):
     result = await normalize_raw_documents(db)
     return result
 
 
 @router.post("/ingest/fetch-all")
-async def trigger_fetch_all():
+async def trigger_fetch_all(_: UserProfile = Depends(require_admin)):
     fetch_all_sources_task.delay()
     return {"status": "queued"}
 
 
 @router.post("/ingest/normalize-all")
-async def trigger_normalize_all():
+async def trigger_normalize_all(_: UserProfile = Depends(require_admin)):
     normalize_all_task.delay()
     return {"status": "queued"}
