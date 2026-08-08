@@ -30,7 +30,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://career:career@db:5432/career_intelligence
@@ -74,7 +74,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A app.workers.celery_app beat --loglevel=info
+    command: sh -c "alembic upgrade head && celery -A app.workers.celery_app beat --loglevel=info"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://career:career@db:5432/career_intelligence
