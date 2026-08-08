@@ -4,8 +4,10 @@
 Usage:
     python scripts/sync_profile_to_db.py
     python scripts/sync_profile_to_db.py path/to/structured-profile.json
+    python scripts/sync_profile_to_db.py --email you@example.com
 """
 
+import argparse
 import asyncio
 import json
 import sys
@@ -13,15 +15,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.database import async_session, engine, Base
+from app.database import async_session
+from app.services.auth import get_user_by_email
 from app.services.profile_intake import load_structured_profile
 from app.services.profile_sync import sync_user_profile_from_structured
 
 
-async def main_async(path: Path | None) -> int:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
+async def main_async(path: Path | None, email: str | None) -> int:
     raw = None
     if path:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -33,30 +33,38 @@ async def main_async(path: Path | None) -> int:
         return 1
 
     async with async_session() as session:
-        user = await sync_user_profile_from_structured(session, raw)
-        if not user:
+        user = None
+        if email:
+            user = await get_user_by_email(session, email)
+            if not user:
+                print(f"Error: no account found for {email}")
+                return 1
+
+        profile = await sync_user_profile_from_structured(session, raw, user=user)
+        if not profile:
             print("Error: sync failed.")
             return 1
 
-    print(f"Synced user profile: {user.name}")
-    print(f"  Target universities: {', '.join(user.target_universities or []) or '—'}")
-    constraints = user.constraints or {}
+    print(f"Synced user profile: {profile.name}")
+    print(f"  Target universities: {', '.join(profile.target_universities or []) or '—'}")
+    constraints = profile.constraints or {}
     print(f"  Discovery mode: {constraints.get('discovery_mode', 'open')}")
     print(f"  Manual channels: {', '.join(constraints.get('manual_channels') or []) or '—'}")
     return 0
 
 
 def main() -> int:
-    if len(sys.argv) > 2:
-        print("Usage: python scripts/sync_profile_to_db.py [structured-profile.json]")
-        return 1
+    parser = argparse.ArgumentParser(description="Sync structured profile JSON into PostgreSQL")
+    parser.add_argument("path", nargs="?", help="Optional path to structured-profile.json")
+    parser.add_argument("--email", help="Account email to sync into (recommended)")
+    args = parser.parse_args()
 
-    path = Path(sys.argv[1]) if len(sys.argv) == 2 else None
+    path = Path(args.path) if args.path else None
     if path and not path.exists():
         print(f"Error: file not found: {path}")
         return 1
 
-    return asyncio.run(main_async(path))
+    return asyncio.run(main_async(path, args.email))
 
 
 if __name__ == "__main__":

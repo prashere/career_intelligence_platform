@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
+    # Optional bootstrap admin (created on startup when no users exist)
+    bootstrap_admin_email: str = ""
+    bootstrap_admin_password: str = ""
+
     database_url: str = "postgresql+asyncpg://career:career@localhost:5432/career_intelligence"
     database_url_sync: str = "postgresql://career:career@localhost:5432/career_intelligence"
 

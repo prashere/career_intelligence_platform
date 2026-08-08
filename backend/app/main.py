@@ -3,8 +3,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
+from app.api.routes.admin import router as admin_router
+from app.api.routes.auth import router as auth_router
 from app.api.routes.profile_intake import router as intake_router
 from app.config import settings
+from app.database import async_session
+from app.startup import run_startup_tasks
 
 logger = structlog.get_logger()
 
@@ -23,6 +27,8 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")
 app.include_router(intake_router, prefix="/api/v1")
 
 
@@ -35,10 +41,8 @@ async def startup():
         sentry_sdk.init(dsn=settings.sentry_dsn, integrations=[FastApiIntegration()])
 
     if settings.app_env != "test":
-        from app.database import engine, Base
-
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        async with async_session() as session:
+            await run_startup_tasks(session)
 
     logger.info("startup_complete", env=settings.app_env)
 
