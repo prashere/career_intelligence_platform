@@ -12,7 +12,6 @@ from app.models import (
     Requirement,
     UserOpportunity,
     UserOpportunityStatus,
-    UserProfile,
 )
 from app.schemas import (
     FeedResponse,
@@ -23,25 +22,9 @@ from app.schemas import (
 from app.services.ranking import days_until, urgency_label
 
 
-async def get_default_user(session: AsyncSession) -> UserProfile:
-    result = await session.execute(select(UserProfile).limit(1))
-    user = result.scalar_one_or_none()
-    if not user:
-        user = UserProfile(
-            name="Default User",
-            long_term_goals="Build a research career in applied AI and machine learning",
-            research_interests=["applied AI", "machine learning", "computational modelling"],
-            skills=["Python", "PyTorch", "research"],
-            target_regions=["Germany", "Europe"],
-            target_universities=["TU Dresden"],
-            degree_level="MSc",
-            projects=["TellO"],
-            connections=["Calandra"],
-        )
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
-    return user
+def empty_feed() -> FeedResponse:
+    summary = FeedSummary(new_since=0, deadlines_this_week=0, prep_milestones_due=0)
+    return FeedResponse(summary=summary, scholarships=[], fellowships=[], other=[])
 
 
 def _to_response(opp: Opportunity, uo: Optional[UserOpportunity] = None) -> OpportunityResponse:

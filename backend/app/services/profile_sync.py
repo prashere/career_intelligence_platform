@@ -8,7 +8,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import UserProfile
+from app.models import User, UserProfile
 from app.services.profile_intake import load_structured_profile, validate_structured_profile
 from app.services.profile_pipeline import structured_profile_to_user_fields
 
@@ -16,32 +16,48 @@ from app.services.profile_pipeline import structured_profile_to_user_fields
 async def sync_user_profile_from_structured(
     session: AsyncSession,
     data: dict | None = None,
+    *,
+    user: User | None = None,
+    profile: UserProfile | None = None,
 ) -> UserProfile | None:
-    """Update or create the default user profile from structured-profile.json."""
+    """Update or create a user profile from structured-profile.json."""
     raw = data if data is not None else load_structured_profile()
     if not raw:
         return None
 
-    profile, errors = validate_structured_profile(raw)
-    if profile is None:
+    structured, errors = validate_structured_profile(raw)
+    if structured is None:
         raise ValueError(f"Invalid structured profile: {'; '.join(errors)}")
 
-    fields = structured_profile_to_user_fields(profile)
+    fields = structured_profile_to_user_fields(structured)
 
-    result = await session.execute(select(UserProfile).limit(1))
-    user = result.scalar_one_or_none()
-    if not user:
-        user = UserProfile(name=fields["name"])
-        session.add(user)
+    if profile is None and user is not None:
+        result = await session.execute(select(UserProfile).where(UserProfile.user_id == user.id))
+        profile = result.scalar_one_or_none()
+
+    if profile is None:
+        result = await session.execute(select(UserProfile).limit(1))
+        profile = result.scalar_one_or_none()
+
+    if not profile:
+        if user is None:
+            raise ValueError("No user profile to sync into — sign in or pass --email")
+        profile = UserProfile(user_id=user.id, name=fields["name"])
+        session.add(profile)
 
     for key, value in fields.items():
-        setattr(user, key, value)
+        setattr(profile, key, value)
 
     await session.commit()
-    await session.refresh(user)
-    return user
+    await session.refresh(profile)
+    return profile
 
 
-async def sync_user_profile_from_path(session: AsyncSession, path: Path) -> UserProfile | None:
+async def sync_user_profile_from_path(
+    session: AsyncSession,
+    path: Path,
+    *,
+    user: User | None = None,
+) -> UserProfile | None:
     raw = json.loads(path.read_text(encoding="utf-8"))
-    return await sync_user_profile_from_structured(session, raw)
+    return await sync_user_profile_from_structured(session, raw, user=user)
