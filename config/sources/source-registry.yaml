@@ -1,0 +1,741 @@
+# Aggregator catalog — schema defaults in ingestion-config.yaml (same directory).
+
+schema_version: "1.2"
+default_selection_count: 4
+
+aggregators:
+  - id: opportunitydesk
+    name: OpportunityDesk
+    url: ["https://opportunitydesk.org/feed/"]
+    type: rss
+    regions: [global]
+    tags: [scholarship, fellowship, internship, jobs, conference, exchange, youth-opportunities, grant]
+    degree_levels: [BSc, MSc, PhD, Fellowship, Mixed]
+    funding_signal: high
+    fetch_interval_minutes: 360
+    chip_label: Opportunity Desk
+    confidence: verified
+    adapter_id: opportunitydesk_wordpress_v1
+    summary_completeness: snippet_only
+    authority: 0.82
+    politeness_delay_ms: 2500
+    fetch_mode: http
+
+    parser_config:
+      version: 1
+      discover:
+        kind: rss
+        feed_urls:
+          - "https://opportunitydesk.org/feed/"
+        max_entries: 50
+        dedupe_by: link
+      extract:
+        detail_fetch: required
+        ladder:
+          structured: true
+          adapter: true
+          heuristic: true
+        feed:
+          strip_html: true
+          use_content_encoded: true
+        detail:
+          title: "h1.entry-title, h1.post-title, article h1"
+          content: "article .entry-content, .post-content, div.entry-content"
+          remove:
+            - "nav"
+            - "footer"
+            - "script"
+            - ".comments"
+            - ".sharedaddy"
+            - ".jp-relatedposts"
+            - ".related-posts"
+      deadline_patterns:
+        - '(?i)deadline[:\s]+([^<\n.]+)'
+        - '(?i)apply by[:\s]+([^<\n.]+)'
+        - '(?i)application deadline[:\s]+([^<\n.]+)'
+        - '(?i)applications? close[:\s]+([^<\n.]+)'
+      canonical:
+        strip_query_params: [utm_source, utm_medium, utm_campaign, utm_content, fbclid]
+      filters:
+        exclude_link_regex:
+          - '(?i)/about/'
+          - '(?i)/contact/'
+          - '(?i)/advertise/'
+          - '(?i)/privacy/'
+          - '(?i)/terms/'
+      notes: >
+        Global youth-opportunity aggregator established in 2012. Covers
+        scholarships, fellowships, internships, jobs, exchanges, grants,
+        conferences and other development opportunities. Treat the
+        aggregator as a discovery layer and preserve the original
+        application URL when available.
+
+  - id: youthop
+    name: Youth Opportunities
+    url: ["https://www.youthop.com/feed/"]
+    type: rss
+    regions: [global]
+    tags: [scholarship, fellowship, internship, jobs, conference, volunteer, exchange, youth-opportunities]
+    degree_levels: [BSc, MSc, PhD, Fellowship, Mixed]
+    funding_signal: medium
+    fetch_interval_minutes: 360
+    chip_label: YouthOp
+    confidence: verified
+    adapter_id: youthop_wordpress_v1
+    summary_completeness: snippet_only
+    authority: 0.78
+    politeness_delay_ms: 2500
+    fetch_mode: http
+
+    parser_config:
+      version: 1
+      discover:
+        kind: hybrid
+        stop_on_first_success: true
+        strategies:
+          - kind: youthop_api
+            base_url: https://www.youthop.com/wp-json/wp/v2/posts
+            per_page: 50
+            max_pages: 2
+      extract:
+        detail_fetch: required
+        ladder:
+          structured: true
+          adapter: true
+          heuristic: true
+        feed:
+          strip_html: true
+          use_content_encoded: true
+        detail:
+          title: "h1.entry-title, h1.post-title, article h1"
+          content: "article .entry-content, .post-content, div.entry-content"
+          remove:
+            - "nav"
+            - "footer"
+            - "script"
+            - ".comments"
+            - ".sharedaddy"
+            - ".related-posts"
+      deadline_patterns:
+        - '(?i)deadline[:\s]+([^<\n.]+)'
+        - '(?i)apply by[:\s]+([^<\n.]+)'
+        - '(?i)last date[:\s]+([^<\n.]+)'
+        - '(?i)applications? close[:\s]+([^<\n.]+)'
+      canonical:
+        strip_query_params: [utm_source, utm_medium, utm_campaign, utm_content, fbclid]
+      filters:
+        exclude_link_regex:
+          - '(?i)/about/'
+          - '(?i)/contact/'
+          - '(?i)/advertise/'
+          - '(?i)/privacy/'
+          - '(?i)/terms/'
+      notes: >
+        High-volume international youth opportunity discovery platform.
+        Particularly useful for breadth across scholarships, internships,
+        fellowships, conferences, volunteering and youth programs. Because
+        volume is high, downstream ranking should perform stronger duplicate,
+        deadline and official-source validation.
+
+  - id: scholarships360
+    name: Scholarships360
+    url: ["https://scholarships360.org/feed/"]
+    type: rss
+    regions: [us]
+    tags: [scholarship, financial-aid, college, graduate-school, merit]
+    degree_levels: [BSc, MSc, PhD, Mixed]
+    funding_signal: high
+    fetch_interval_minutes: 720
+    chip_label: Scholarships360
+    confidence: verified
+    adapter_id: scholarships360_wordpress_v1
+    summary_completeness: full
+    authority: 0.86
+    politeness_delay_ms: 2500
+    fetch_mode: http
+
+    parser_config:
+      version: 1
+      discover:
+        kind: rss
+        feed_urls:
+          - "https://scholarships360.org/feed/"
+        max_entries: 50
+        dedupe_by: link
+      extract:
+        detail_fetch: required
+        ladder:
+          structured: true
+          adapter: true
+          heuristic: true
+        feed:
+          strip_html: true
+          use_content_encoded: true
+        detail:
+          title: "h1.entry-title, h1.post-title, article h1"
+          content: "article .entry-content, .entry-content, .post-content"
+          remove:
+            - "nav"
+            - "footer"
+            - "script"
+            - ".comments"
+            - ".sharedaddy"
+            - ".related-posts"
+            - ".advertisement"
+      deadline_patterns:
+        - '(?i)deadline[:\s]+([^<\n.]+)'
+        - '(?i)due date[:\s]+([^<\n.]+)'
+        - '(?i)applications? close[:\s]+([^<\n.]+)'
+      canonical:
+        strip_query_params: [utm_source, utm_medium, utm_campaign, utm_content, fbclid]
+      filters:
+        exclude_link_regex:
+          - '(?i)/about/'
+          - '(?i)/contact/'
+          - '(?i)/advertise/'
+          - '(?i)/privacy/'
+          - '(?i)/terms/'
+          - '(?i)/research/'
+      notes: >
+        U.S.-focused scholarship discovery and matching platform. Stronger
+        scholarship-specific curation signal than broad youth-opportunity
+        aggregators. Particularly useful for U.S. undergraduate and graduate
+        funding, but geographic eligibility must be checked per award.
+
+  - id: bold
+    name: Bold.org
+    url: https://bold.org/
+    type: html
+    regions: [us]
+    tags: [scholarship, financial-aid, graduate-school, undergraduate, donor-funded]
+    degree_levels: [BSc, MSc, PhD, Mixed]
+    funding_signal: high
+    fetch_interval_minutes: 720
+    chip_label: Bold.org
+    confidence: verified
+    adapter_id: bold_html_v1
+    summary_completeness: full
+    authority: 0.84
+    politeness_delay_ms: 3000
+    fetch_mode: http
+
+    parser_config:
+      version: 1
+      discover:
+        kind: sitemap
+        index_url: https://bold.org/sitemap.xml
+        include_path_regex: '^https://bold.org/scholarships/(?!by-)(?!.*-list$)[a-z0-9-]+(?:-[a-z0-9-]+)*/$'
+        max_urls: 100
+      extract:
+        detail_fetch: required
+        ladder:
+          structured: true
+          adapter: true
+          heuristic: true
+        detail:
+          title: "h1"
+          content: "main"
+          remove:
+            - "nav"
+            - "footer"
+            - "script"
+            - "style"
+      deadline_patterns:
+        - '(?i)deadline[:\s]+([^<\n.]+)'
+        - '(?i)application deadline[:\s]+([^<\n.]+)'
+        - '(?i)apply by[:\s]+([^<\n.]+)'
+      canonical:
+        strip_query_params: [utm_source, utm_medium, utm_campaign, utm_content, fbclid]
+      filters:
+        exclude_link_regex:
+          - '(?i)/about/'
+          - '(?i)/contact/'
+          - '(?i)/careers/'
+          - '(?i)/press/'
+          - '(?i)/reviews/'
+          - '(?i)/terms/'
+      notes: >
+        Scholarship platform where individuals and organizations create and
+        fund awards. Strong source for platform-exclusive donor-funded
+        scholarships. Unlike a conventional editorial aggregator, the
+        opportunity itself is hosted within the platform, so provenance
+        should be represented as platform-hosted rather than third-party
+        aggregation.
+
+  - id: bigfuture
+    name: BigFuture
+    url: https://bigfuture.collegeboard.org/scholarship-search
+    type: api
+    regions: [us]
+    tags: [scholarship, financial-aid, college, undergraduate]
+    degree_levels: [BSc, Mixed]
+    funding_signal: high
+    fetch_interval_minutes: 720
+    chip_label: BigFuture
+    confidence: verified
+    adapter_id: bigfuture_collegeboard_v1
+    summary_completeness: full
+    authority: 0.94
+    politeness_delay_ms: 3000
+    fetch_mode: http
+
+    parser_config:
+      version: 1
+      discover:
+        kind: hybrid
+        stop_on_first_success: true
+        strategies:
+          - kind: collegeboard_scholarships
+            api_url: https://scholarshipsearch-api.collegeboard.org/scholarships
+            body:
+              pageSize: 50
+              pageNumber: 0
+              sortBy: DEADLINE_ASC
+            url_template: "https://bigfuture.collegeboard.org/scholarships/{slug}"
+          - kind: html
+            requires_browser: true
+            entry_urls:
+              - https://bigfuture.collegeboard.org/scholarship-search
+            link_selector: "a[href*='/scholarships/']"
+            max_entries: 100
+      extract:
+        detail_fetch: required
+        ladder:
+          structured: true
+          adapter: true
+          heuristic: true
+        detail:
+          title: "h1"
+          content: "main"
+          remove:
+            - "nav"
+            - "footer"
+            - "script"
+            - "style"
+      deadline_patterns:
+        - '(?i)deadline[:\s]+([^<\n.]+)'
+        - '(?i)due[:\s]+([^<\n.]+)'
+        - '(?i)apply by[:\s]+([^<\n.]+)'
+      canonical:
+        strip_query_params: [utm_source, utm_medium, utm_campaign, fbclid]
+      filters:
+        include_link_regex:
+          - '(?i)bigfuture\.collegeboard\.org/scholarships/[^/]+$'
+        exclude_link_regex:
+          - '(?i)/about/'
+          - '(?i)/contact/'
+          - '(?i)/careers/'
+          - '(?i)/privacy/'
+          - '(?i)/terms/'
+          - '(?i)/scholarship-search'
+          - '(?i)/scholarship-list'
+      notes: >
+        College Board-operated scholarship and college-planning ecosystem.
+        Strong institutional provenance. Primarily relevant to U.S. students
+        and U.S. undergraduate funding. Do not generalize its reliability to
+        every external link merely because the discovery platform is reputable.
+
+  - id: careeronestop
+    name: CareerOneStop
+    url: https://www.careeronestop.org/Toolkit/Training/find-scholarships.aspx
+    type: html
+    regions: [us, international-to-us]
+    tags: [scholarship, fellowship, grant, financial-aid, career, training]
+    degree_levels: [BSc, MSc, PhD, Fellowship, Mixed]
+    funding_signal: high
+    fetch_interval_minutes: 720
+    chip_label: CareerOneStop
+    confidence: verified
+    adapter_id: careeronestop_scholarship_finder_v1
+    summary_completeness: full
+    authority: 0.98
+    politeness_delay_ms: 3000
+    fetch_mode: http
+
+    parser_config:
+      version: 1
+      discover:
+        kind: hybrid
+        stop_on_first_success: true
+        request_timeout_ms: 90000
+        region_blocked_hint: true
+        strategies:
+          - kind: jina_html
+            entry_urls:
+              - https://www.careeronestop.org/Toolkit/Training/find-scholarships.aspx?curPage=1
+            url_base: https://www.careeronestop.org/Toolkit/Training/
+            link_pattern: "(?i)find-scholarships-detail\\.aspx\\?[^\\s\"]*scholarshipId=\\d+"
+            pagination:
+              param: curPage
+              start: 1
+              max_pages: 3
+            max_entries: 100
+          - kind: html
+            requires_browser: true
+            entry_urls:
+              - https://www.careeronestop.org/Toolkit/Training/find-scholarships.aspx
+            link_selector: 'a[href*="find-scholarships-detail"]'
+            max_entries: 100
+      extract:
+        detail_fetch: required
+        ladder:
+          structured: true
+          adapter: true
+          heuristic: true
+        detail:
+          title: "h1"
+          content: "main"
+          remove:
+            - "nav"
+            - "footer"
+            - "script"
+            - "style"
+      deadline_patterns:
+        - '(?i)deadline[:\s]+([^<\n.]+)'
+        - '(?i)deadline month[:\s]+([^<\n.]+)'
+      canonical:
+        strip_query_params: [utm_source, utm_medium, utm_campaign, fbclid]
+      filters:
+        require_link_regex:
+          - '(?i)find-scholarships-detail\.aspx.*scholarshipId=\d+'
+        exclude_link_regex:
+          - '(?i)/about/'
+          - '(?i)/contact/'
+          - '(?i)/privacy/'
+          - '(?i)/terms/'
+      notes: >
+        U.S. Department of Labor-sponsored career and education resource.
+        Scholarship Finder contains more than 9,500 scholarships, fellowships,
+        grants, loans, prizes and related awards. Data is partly provided
+        under license by Gale/Cengage and partly by CareerOneStop. The source
+        itself advises users to verify current deadlines and eligibility with
+        the sponsoring organization, so downstream validation remains mandatory.
+
+  - id: scholarshipportal
+    name: ScholarshipPortal
+    url: https://www.mastersportal.com/scholarships
+    type: html
+    regions: [europe, global]
+    tags: [scholarship, funding, masters, phd, europe, international]
+    degree_levels: [MSc, PhD, Fellowship, Mixed]
+    funding_signal: high
+    fetch_interval_minutes: 720
+    chip_label: ScholarshipPortal
+    confidence: verified
+    adapter_id: scholarshipportal_html_v1
+    summary_completeness: full
+    authority: 0.90
+    politeness_delay_ms: 3000
+    fetch_mode: http
+
+    parser_config:
+      version: 1
+      discover:
+        kind: hybrid
+        stop_on_first_success: true
+        request_timeout_ms: 90000
+        strategies:
+          - kind: jina_html
+            entry_urls:
+              - https://www.mastersportal.com/search/scholarships/master
+            link_pattern: "(?i)https?://www\\.mastersportal\\.com/scholarships/[^\\s\")#]+"
+            max_entries: 100
+          - kind: html
+            requires_browser: true
+            entry_urls:
+              - https://www.mastersportal.com/scholarships
+            link_selector: 'a[href*="/scholarships/"]'
+            max_entries: 100
+      extract:
+        detail_fetch: required
+        ladder:
+          structured: true
+          adapter: true
+          heuristic: true
+        detail:
+          title: "h1"
+          content: "main"
+          remove:
+            - "nav"
+            - "footer"
+            - "script"
+            - "style"
+      deadline_patterns:
+        - '(?i)deadline[:\s]+([^<\n.]+)'
+        - '(?i)application deadline[:\s]+([^<\n.]+)'
+        - '(?i)apply by[:\s]+([^<\n.]+)'
+      canonical:
+        strip_query_params: [utm_source, utm_medium, utm_campaign, fbclid]
+      filters:
+        require_link_regex:
+          - '(?i)mastersportal\.com/scholarships/(?:\d+|[a-z0-9-]+)'
+        exclude_link_regex:
+          - '(?i)/about/'
+          - '(?i)/contact/'
+          - '(?i)/advertise/'
+          - '(?i)/privacy/'
+          - '(?i)/terms/'
+          - '(?i)/search/'
+          - '(?i)#/'
+          - '(?i)/scholarships/master$'
+          - '(?i)/scholarships/phd$'
+          - '(?i)/scholarships/$'
+      notes: >
+        European study-funding discovery platform with particularly strong
+        relevance to European higher education. Best treated as a structured
+        scholarship discovery database rather than a general youth-opportunity
+        feed. Always retain sponsor/university links for final verification.
+
+  - id: scholarpositions
+    name: ScholarPositions
+    url: https://scholarpositions.com/
+    type: wp_json
+    regions: [global]
+    tags: [scholarship, fully-funded, fellowship, phd, masters, internship]
+    degree_levels: [MSc, PhD, Fellowship, Mixed]
+    funding_signal: very_high
+    fetch_interval_minutes: 360
+    chip_label: ScholarPositions
+    confidence: verified
+    adapter_id: scholarpositions_html_v1
+    summary_completeness: full
+    authority: 0.76
+    politeness_delay_ms: 3000
+    fetch_mode: http
+
+    parser_config:
+      version: 1
+      discover:
+        kind: hybrid
+        stop_on_first_success: true
+        request_timeout_ms: 90000
+        cloudflare: true
+        strategies:
+          - kind: wp_json
+            proxy_prefix: https://r.jina.ai/
+            base_url: https://scholarpositions.com/wp-json/wp/v2/posts
+            per_page: 50
+            max_pages: 2
+          - kind: html
+            requires_browser: true
+            entry_urls:
+              - https://scholarpositions.com/
+            link_selector: "article h2 a, h2.entry-title a, .post-title a"
+            max_entries: 100
+      extract:
+        detail_fetch: required
+        ladder:
+          structured: true
+          adapter: true
+          heuristic: true
+        detail:
+          title: "h1"
+          content: "main"
+          remove:
+            - "nav"
+            - "footer"
+            - "script"
+            - "style"
+            - ".comments"
+      deadline_patterns:
+        - '(?i)deadline[:\s]+([^<\n.]+)'
+        - '(?i)application deadline[:\s]+([^<\n.]+)'
+        - '(?i)apply before[:\s]+([^<\n.]+)'
+        - '(?i)closing date[:\s]+([^<\n.]+)'
+      canonical:
+        strip_query_params: [utm_source, utm_medium, utm_campaign, fbclid]
+      filters:
+        require_link_regex:
+          - '(?i)scholarpositions\.com/[^/]+/$'
+        exclude_link_regex:
+          - '(?i)/about/'
+          - '(?i)/contact/'
+          - '(?i)/advertise/'
+          - '(?i)/privacy/'
+          - '(?i)/terms/'
+          - '(?i)/blog/'
+          - '(?i)/category/'
+          - '(?i)/tag/'
+          - '(?i)/latest-fully-funded-scholarships/'
+      notes: >
+        Specialist aggregator emphasizing fully-funded scholarships and
+        related opportunities. The site publicly claims that listings are
+        manually checked for authenticity and updated frequently. Treat this
+        as a self-reported verification signal rather than independently
+        proven evidence; sample-link verification should remain mandatory.
+
+  - id: opportunitiescorners
+    name: OpportunitiesCorners
+    url: ["https://opportunitiescorners.com/feed/"]
+    type: rss
+    regions: [global]
+    tags: [scholarship, fully-funded, fellowship, internship, conference, exchange, online-course]
+    degree_levels: [BSc, MSc, PhD, Fellowship, Mixed]
+    funding_signal: very_high
+    fetch_interval_minutes: 360
+    chip_label: Opportunities Corners
+    confidence: verified
+    adapter_id: opportunitiescorners_wordpress_v1
+    summary_completeness: snippet_only
+    authority: 0.70
+    politeness_delay_ms: 2500
+    fetch_mode: http
+
+    parser_config:
+      version: 1
+      discover:
+        kind: rss
+        feed_urls:
+          - "https://opportunitiescorners.com/feed/"
+        max_entries: 50
+        dedupe_by: link
+      extract:
+        detail_fetch: required
+        ladder:
+          structured: true
+          adapter: true
+          heuristic: true
+        feed:
+          strip_html: true
+          use_content_encoded: true
+        detail:
+          title: "h1.entry-title, h1.post-title, article h1"
+          content: "article .entry-content, .entry-content, .post-content"
+          remove:
+            - "nav"
+            - "footer"
+            - "script"
+            - ".comments"
+            - ".sharedaddy"
+            - ".related-posts"
+            - ".advertisement"
+      deadline_patterns:
+        - '(?i)deadline[:\s]+([^<\n.]+)'
+        - '(?i)apply by[:\s]+([^<\n.]+)'
+        - '(?i)application deadline[:\s]+([^<\n.]+)'
+        - '(?i)last date[:\s]+([^<\n.]+)'
+      canonical:
+        strip_query_params: [utm_source, utm_medium, utm_campaign, utm_content, fbclid]
+      filters:
+        exclude_link_regex:
+          - '(?i)/about/'
+          - '(?i)/contact/'
+          - '(?i)/advertisement/'
+          - '(?i)/privacy/'
+          - '(?i)/terms/'
+      notes: >
+        Independent international opportunities aggregator with a strong
+        emphasis on fully-funded scholarships, fellowships and internships.
+        Posts should be treated as discovery records. Preserve and prioritize
+        official application URLs over any intermediary or promotional links.
+
+  - id: profellow
+    name: ProFellow
+    url: https://www.profellow.com/feed/
+    type: rss
+    regions: [us, global]
+    tags: [fellowship, graduate-school, phd, professional-development, leadership, research, grant]
+    degree_levels: [MSc, PhD, Fellowship, Postdoc, Mixed]
+    funding_signal: high
+    fetch_interval_minutes: 720
+    chip_label: ProFellow
+    confidence: verified
+    adapter_id: profellow_wordpress_v1
+    summary_completeness: full
+    authority: 0.88
+    politeness_delay_ms: 3000
+    fetch_mode: http
+
+    parser_config:
+      version: 1
+      discover:
+        kind: rss
+        feed_urls:
+          - https://www.profellow.com/feed/
+        max_entries: 50
+        dedupe_by: link
+      extract:
+        detail_fetch: required
+        ladder:
+          structured: true
+          adapter: true
+          heuristic: true
+        detail:
+          title: "h1"
+          content: "main, article"
+          remove:
+            - "nav"
+            - "footer"
+            - "script"
+            - "style"
+            - ".comments"
+            - ".related-posts"
+      deadline_patterns:
+        - '(?i)deadline[:\s]+([^<\n.]+)'
+        - '(?i)application deadline[:\s]+([^<\n.]+)'
+        - '(?i)applications? due[:\s]+([^<\n.]+)'
+        - '(?i)apply by[:\s]+([^<\n.]+)'
+      canonical:
+        strip_query_params: [utm_source, utm_medium, utm_campaign, utm_content, fbclid]
+      filters:
+        exclude_link_regex:
+          - '(?i)/about/'
+          - '(?i)/contact/'
+          - '(?i)/membership/'
+          - '(?i)/careers/'
+          - '(?i)/privacy/'
+          - '(?i)/terms/'
+      notes: >
+        Fellowship-specialist discovery platform with strong relevance to
+        postgraduate study, doctoral research, professional development,
+        leadership and international experiences. Particularly valuable when
+        the target is fellowships rather than generic scholarships.
+
+# Recommended source-level quality model.
+# These fields are intentionally separate from "authority".
+# Scores should be populated after empirical auditing of each source.
+
+quality_schema:
+  provenance: 0.0
+  editorial_curation: 0.0
+  official_source_linking: 0.0
+  freshness: 0.0
+  transparency: 0.0
+  user_reputation: 0.0
+  noise_control: 0.0
+  geographic_relevance: 0.0
+  overall: 0.0
+
+verification_defaults:
+  official_source_required: true
+  deadline_recheck_required: true
+  sponsor_recheck_required: true
+  stale_after_days: 45
+
+# Important implementation principle:
+# "confidence" and "authority" must not be treated as synonyms.
+#
+# confidence:
+#   Whether there is sufficient evidence that the source is a legitimate,
+#   functioning discovery source.
+#
+# authority:
+#   Estimated quality/provenance/reliability of the source itself.
+#
+# Example:
+#   CareerOneStop can have very high authority because of its U.S. Department
+#   of Labor provenance, while an independent aggregator can still be useful
+#   with lower authority.
+
+# Operational validation fields recommended for production:
+runtime_validation_schema:
+  feed_status: null
+  last_successful_fetch: null
+  last_failed_fetch: null
+  entries_found: 0
+  parser_success_rate: null
+  duplicate_rate: null
+  stale_listing_rate: null
+  official_link_rate: null
+  deadline_extraction_rate: null
+  last_audit_at: null
