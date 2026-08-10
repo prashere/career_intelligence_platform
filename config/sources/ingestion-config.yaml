@@ -1,0 +1,37 @@
+# Ingestion pipeline configuration — schema defaults and validation settings.
+# Aggregator entries live in source-registry.yaml (same directory).
+
+schema_version: "1.2"
+default_selection_count: 4
+
+discover_kinds:
+  - rss
+  - html
+  - html_paginated
+  - hybrid
+  - wp_json
+  - sitemap
+  - youthop_api
+  - jina_html
+  - collegeboard_scholarships
+
+fetch_modes:
+  - http
+  - browser
+
+summary_completeness_values:
+  - full_in_feed
+  - snippet_only
+
+validation:
+  http_timeout_seconds: 35
+  min_items_after_filter: 1
+  browser_sources_pass_on_skip: true
+
+field_reference:
+  adapter_id: stable handler key for discover + extract dispatch
+  summary_completeness: full_in_feed | snippet_only
+  authority: 0.0–1.0 merge tie-breaker
+  politeness_delay_ms: per-domain minimum gap between requests
+  fetch_mode: http (default) | browser (JS/Cloudflare)
+  parser_config: discover / extract / canonical / filters blocks
