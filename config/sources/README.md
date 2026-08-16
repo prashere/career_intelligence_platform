@@ -7,20 +7,17 @@ Canonical aggregator catalog and ingestion schema for the Career Intelligence Pl
 | `source-registry.yaml` | Aggregator entries: URLs, scoring metadata, `parser_config` (discover / extract / filters) |
 | `ingestion-config.yaml` | Schema version, allowed discover kinds, validation defaults, field reference |
 
-## Current catalog (10 aggregators)
+## Current catalog (7 aggregators)
 
 | ID | Discover approach | Notes |
 |----|-------------------|--------|
 | `opportunitydesk` | RSS | WordPress feed |
 | `youthop` | `youthop_api` hybrid | WordPress JSON API (feed 404) |
 | `scholarships360` | RSS | `/research/` path filter |
-| `bold` | sitemap | Scholarship detail URLs |
 | `bigfuture` | `collegeboard_scholarships` | College Board JSON API |
-| `careeronestop` | `jina_html` hybrid | Geo-blocked direct; Jina reader proxy |
-| `scholarshipportal` | `jina_html` + browser fallback | mastersportal.com search listing |
 | `scholarpositions` | `wp_json` + `proxy_prefix` | Cloudflare; WordPress API via Jina |
 | `opportunitiescorners` | RSS | |
-| `profellow` | RSS | |
+| `profellow` | sitemap + Jina proxy | Fellowship database `/fellowship/{slug}/` only |
 
 `url` in the registry may be a **string** or a **one-item list** (RSS feeds). The backend normalizes lists to a single string for APIs and seeding.
 
@@ -53,7 +50,7 @@ python scripts/validate_discover_strategies.py --aggregator bigfuture --timeout 
 python scripts/validate_discover_strategies.py --include-browser --timeout 90
 ```
 
-Expect **10/10 PASS** on HTTP-only validation after registry updates. Jina-backed sources may take up to 90s per probe.
+Expect **7/7 PASS** on HTTP-only validation after registry updates. Jina-backed sources may take up to 90s per probe.
 
 ## After editing the registry
 
