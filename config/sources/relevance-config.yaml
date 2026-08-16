@@ -1,0 +1,222 @@
+# Relevance gate configuration.
+#
+# The gate scores each discovered item instead of applying a chain of pass/fail
+# keyword gates. Scores combine into two groups:
+#
+#   corpus  — "is this an opportunity at all?"  (type, funding, application)
+#   fit     — "does it match the operator profile?" (discipline, region, degree)
+#
+# Corpus signals decide admission. Fit signals only raise the score; they never
+# reject on their own, because a 10-word listing title cannot be expected to
+# name a discipline or a country.
+#
+# Verdicts: admit | investigate | reject
+#   investigate — feed text is insufficient to confirm a single applyable
+#   listing; fetch the detail page. Editorial roundups and hub pages reject
+#   immediately instead of landing here.
+
+schema_version: "1.1"
+
+thresholds:
+  # Final score at or above this is admitted immediately.
+  admit: 0.55
+  # Final score at or below this is rejected, but only once we have enough text.
+  reject: 0.22
+  # Below this the item carries no usable signal at all, so there is nothing to
+  # investigate and it is rejected regardless of how little text we have.
+  no_signal: 0.05
+  # Information sufficiency (0..1) required before a low score may reject.
+  min_sufficiency_to_reject: 0.5
+  # A negative signal at or above this strength rejects outright.
+  hard_negative: 0.8
+
+sufficiency:
+  # Characters of prose that count as "fully informed".
+  full_text_chars: 1200
+  # Characters below which we treat the item as title-only.
+  title_only_chars: 120
+  # Sufficiency granted once a detail page has been fetched.
+  after_detail_fetch: 1.0
+
+weights:
+  # Group weights. corpus + fit should sum to 1.0.
+  corpus: 0.7
+  fit: 0.3
+  # Per-signal strengths inside each group (noisy-OR: any strong signal is
+  # enough, several strong signals compound).
+  signals:
+    opportunity_type: 0.95
+    funding: 0.7
+    application: 0.5
+    discipline: 0.6
+    region: 0.5
+    degree: 0.4
+
+# Where a signal was found changes how much it is trusted.
+field_confidence:
+  title: 1.0
+  url: 0.9
+  summary: 0.85
+  content: 0.75
+  registry: 0.8
+
+lexicons:
+  # Words that identify the item as a funding/career opportunity.
+  opportunity_type:
+    scholarship: [scholarship, scholarships, scholar award, bursary, bursaries, tuition award]
+    fellowship: [fellowship, fellowships, fellow programme, fellow program]
+    grant: [grant, grants, research grant, travel grant, seed funding, funding call]
+    internship: [internship, internships, traineeship, placement, co-op program]
+    phd: [phd, ph d, doctoral, doctorate, doctoral position, research position]
+    graduate_program: [masters programme, masters program, msc programme, graduate program, graduate programme, postgraduate program]
+    competition: [competition, contest, hackathon, challenge, prize, award programme]
+    conference: [conference, symposium, summit, convening]
+    workshop: [workshop, summer school, winter school, training program, bootcamp]
+    exchange: [exchange program, exchange programme, mobility program, study abroad]
+
+  # Money and support signals. Amounts like "$10,000" are detected separately.
+  funding:
+    - fully funded
+    - full funding
+    - fully-funded
+    - partial funding
+    - tuition
+    - tuition waiver
+    - tuition fee
+    - stipend
+    - living allowance
+    - monthly allowance
+    - travel allowance
+    - covers
+    - award amount
+    - financial aid
+    - no application fee
+    - paid
+    - salary
+    - honorarium
+    - up to
+    - worth
+
+  # Signals that this is an applyable listing rather than an article.
+  application:
+    - deadline
+    - apply now
+    - how to apply
+    - application deadline
+    - applications open
+    - applications are open
+    - apply by
+    - closing date
+    - eligibility
+    - eligible
+    - requirements
+    - selection criteria
+    - submit your application
+    - application form
+    - closes on
+
+  # Items that are definitely not actionable opportunities.
+  negative:
+    hard:
+      - applications are closed
+      - application closed
+      - applications have closed
+      - no longer accepting
+      - winners announced
+      - results announced
+      - this opportunity has expired
+      - deadline has passed
+      - registration closed
+    # Soft negatives only reject when the item also has no opportunity signal,
+    # so listing common page words here is safe.
+    soft:
+      - privacy policy
+      - terms of service
+      - terms and conditions
+      - cookie policy
+      - about us
+      - contact us
+      - contact
+      - advertise with us
+      - advertise
+      - newsletter signup
+      - subscribe to our
+      - write for us
+      - sitemap
+      - log in
+      - sign up
+      - careers
+      - press room
+      - faq
+      - frequently asked questions
+
+  # Roundups, guides, reviews, and listing hubs — not one applyable opportunity.
+  editorial:
+    title_patterns:
+      - '^top\s+\d+'
+      - '^best\s+\d+'
+      - '\bultimate guide\b'
+      - '\bcomplete guide\b'
+      - '\beverything you need to know\b'
+      - '\bfully funded\b.*\b(programs|programmes)\s+in\b'
+      - '\b(master|masters|msc|ma|phd|doctoral)\s+(programs|programmes)\s+in\b'
+      - '\b(programs|programmes)\s+in\s+[a-z]'
+      - '\bquick apply scholarships\b'
+      - '\beasy scholarships to apply\b'
+      - '\bscholarships to apply for\b'
+      - '\b\d+\s+(easy|quick|best|top)\s+scholarships\b'
+      - '\bscholarships from\b'
+      - '\bfellowships in \d{4} for\b'
+      - '\bfor students professionals and\b'
+      - '\btechnology policy fellowships in \d{4}\b'
+      - '\btest page\b'
+      - '\bsample test\b'
+      - '\bpeople''s reviews\b'
+      - '\buser reviews\b'
+      - '\bstudent reviews\b'
+      - '\breviews of\b'
+      - '\bwrite a review\b'
+      - '\bhow i\b'
+      - '\btips for\b'
+    url_patterns:
+      - '/reviews?/'
+      - 'quick-apply-scholarships'
+      - '/scholarship-search'
+      - '/scholarship-list'
+      - '/blog/'
+      - '/category/'
+      - '/tag/'
+      - '/advertise'
+      - '/research/'
+
+  # Region vocabulary. Global markers let worldwide listings satisfy a regional
+  # profile instead of being dropped for not naming a country.
+  region_global_markers:
+    - global
+    - worldwide
+    - international
+    - any country
+    - all nationalities
+    - all countries
+    - open to all
+    - anywhere
+
+# Synonym expansion applied to operator profile terms before matching.
+synonyms:
+  tech: [technology, technical, engineering, it, software, computing]
+  ai: [artificial intelligence, machine learning, deep learning, ml]
+  artificial intelligence: [ai, machine learning, deep learning]
+  machine learning: [ml, ai, artificial intelligence, deep learning]
+  data science: [data analytics, data engineering, analytics, big data]
+  computer science: [cs, computing, informatics, software engineering]
+  software engineering: [software development, programming, software engineer]
+  cybersecurity: [cyber security, information security, infosec]
+  robotics: [mechatronics, autonomous systems]
+  biotechnology: [biotech, life sciences]
+  environment: [environmental, sustainability, climate, green]
+  public health: [global health, epidemiology, health sciences]
+  business: [management, entrepreneurship, mba, commerce]
+  economics: [econometrics, development economics]
+  msc: [master, masters, ms, graduate, postgraduate]
+  phd: [doctoral, doctorate, ph d, dphil]
+  women: [female, women in, gender, girls]
