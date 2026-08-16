@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compile L3 artifacts from structured-profile.json (deterministic, no LLM).
 
-RSS URLs are resolved from backend/app/data/source-registry.yaml via profile.sources.aggregators.
+RSS URLs are resolved from config/sources/source-registry.yaml via profile.sources.aggregators.
 
 Usage:
     python scripts/compile_profile.py

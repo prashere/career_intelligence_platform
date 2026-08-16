@@ -17,7 +17,7 @@ from app.services.profile_pipeline import load_source_registry
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Inspect backend/app/data/source-registry.yaml")
+    parser = argparse.ArgumentParser(description="Inspect config/sources/source-registry.yaml")
     parser.add_argument(
         "--validate",
         action="store_true",
@@ -46,7 +46,7 @@ def main() -> int:
         rss = entry.get("type", "rss")
         print(f"  [{entry_id}] {name}")
         print(f"    url: {url}")
-        print(f"    type: {rss}  regions: {entry.get('regions')}  chip: {entry.get('chip_label', '—')}")
+        print(f"    type: {rss}  adapter: {entry.get('adapter_id', '—')}  chip: {entry.get('chip_label', '—')}")
 
         if args.validate:
             for field in ("id", "name", "url", "type"):
@@ -54,6 +54,26 @@ def main() -> int:
                     errors.append(f"{entry_id}: missing {field}")
             if entry.get("type") == "rss" and not str(entry.get("url", "")).startswith("http"):
                 errors.append(f"{entry_id}: invalid rss url")
+            if not entry.get("adapter_id"):
+                errors.append(f"{entry_id}: missing adapter_id")
+            parser = entry.get("parser_config") or {}
+            if not parser.get("discover"):
+                errors.append(f"{entry_id}: parser_config.discover missing")
+            if not parser.get("extract"):
+                errors.append(f"{entry_id}: parser_config.extract missing")
+            discover = parser.get("discover") or {}
+            kind = discover.get("kind")
+            if kind == "hybrid":
+                strategies = discover.get("strategies") or []
+                if not strategies:
+                    errors.append(f"{entry_id}: hybrid discover requires strategies[]")
+                for idx, strat in enumerate(strategies):
+                    if not strat.get("kind"):
+                        errors.append(f"{entry_id}: strategies[{idx}] missing kind")
+            elif kind in ("rss", "html", "html_paginated", "wp_json", "sitemap"):
+                pass
+            elif kind:
+                errors.append(f"{entry_id}: unknown discover.kind {kind!r}")
 
     if args.validate:
         if errors:

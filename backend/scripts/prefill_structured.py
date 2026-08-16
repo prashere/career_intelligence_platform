@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build structured-profile.prefill.json from raw-submission.json (no LLM).
 
-Aggregator selection reads backend/app/data/source-registry.yaml (git-tracked).
+Aggregator selection reads config/sources/source-registry.yaml (git-tracked).
 
 Usage:
     python scripts/prefill_structured.py

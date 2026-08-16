@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Seed opportunity_sources from compiled ingestion_sources.json.
 
-URLs come from ingestion_sources.json (compiled from app/data/source-registry.yaml).
+URLs come from ingestion_sources.json (compiled from config/sources/source-registry.yaml).
 
 Usage:
     python scripts/seed_sources_from_profile.py
@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sqlalchemy import select
 
 from app.database import async_session, engine, Base
+from app.ingestion.registry_config import merge_registry_fields
 from app.models import OpportunitySource, SourceType
 from app.services.profile_intake import compiled_dir
 
@@ -35,7 +36,8 @@ async def seed_from_file(path: Path) -> int:
     async with async_session() as session:
         added = 0
         updated = 0
-        for entry in sources:
+        for raw_entry in sources:
+            entry = merge_registry_fields(raw_entry)
             url = entry["url"]
             result = await session.execute(
                 select(OpportunitySource).where(OpportunitySource.url == url)
@@ -49,10 +51,26 @@ async def seed_from_file(path: Path) -> int:
 
             if existing:
                 existing.name = entry["name"]
+                existing.source_type = source_type
                 existing.fetch_interval_minutes = entry.get("fetch_interval_minutes", 360)
                 existing.is_active = entry.get("is_active", True)
+                existing.registry_id = entry.get("id") or entry.get("registry_id") or existing.registry_id
+                existing.adapter_id = entry.get("adapter_id") or existing.adapter_id
+                existing.fetch_mode = entry.get("fetch_mode") or existing.fetch_mode or "http"
+                existing.summary_completeness = (
+                    entry.get("summary_completeness") or existing.summary_completeness or "snippet_only"
+                )
+                existing.authority = float(entry.get("authority") or existing.authority or 0.5)
+                existing.politeness_delay_ms = int(
+                    entry.get("politeness_delay_ms") or existing.politeness_delay_ms or 2500
+                )
+                existing.parser_config = {
+                    **(existing.parser_config or {}),
+                    **(entry.get("parser_config") or {}),
+                }
                 updated += 1
             else:
+                parser_config = dict(entry.get("parser_config") or {})
                 session.add(
                     OpportunitySource(
                         name=entry["name"],
@@ -60,6 +78,13 @@ async def seed_from_file(path: Path) -> int:
                         source_type=source_type,
                         fetch_interval_minutes=entry.get("fetch_interval_minutes", 360),
                         is_active=entry.get("is_active", True),
+                        registry_id=entry.get("id") or entry.get("registry_id"),
+                        adapter_id=entry.get("adapter_id"),
+                        fetch_mode=entry.get("fetch_mode") or "http",
+                        summary_completeness=entry.get("summary_completeness") or "snippet_only",
+                        authority=float(entry.get("authority") or 0.5),
+                        politeness_delay_ms=int(entry.get("politeness_delay_ms") or 2500),
+                        parser_config=parser_config,
                     )
                 )
                 added += 1
