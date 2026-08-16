@@ -1,6 +1,15 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { authApi } from '../api/auth';
+import { setUnauthorizedHandler } from '../api/http';
 import { clearAuth, getStoredToken, getStoredUser, isAdmin, storeAuth, type AuthUser } from './storage';
 
 interface AuthContextValue {
@@ -43,6 +52,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserState(null);
     queryClient.clear();
   }, [queryClient]);
+
+  useEffect(() => {
+    setUnauthorizedHandler(logout);
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
+
+  useEffect(() => {
+    const storedToken = getStoredToken();
+    if (!storedToken) return;
+
+    let cancelled = false;
+    authApi
+      .me()
+      .then((fresh) => {
+        if (cancelled) return;
+        setUserState(fresh);
+        storeAuth(storedToken, fresh);
+      })
+      .catch(() => {
+        if (!cancelled) logout();
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [logout]);
 
   const setUser = useCallback((next: AuthUser) => {
     setUserState(next);

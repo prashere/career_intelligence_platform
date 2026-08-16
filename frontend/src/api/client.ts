@@ -94,7 +94,15 @@ export interface WeeklyFocus {
 
 export const api = {
   health: () => request<{ status: string }>('/api/v1/health'),
-  feed: (search?: string) => request<FeedResponse>(`/api/v1/feed${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  feed: (params?: { search?: string; funding_type?: string; opportunity_type?: string; status?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.set('search', params.search);
+    if (params?.funding_type) qs.set('funding_type', params.funding_type);
+    if (params?.opportunity_type) qs.set('opportunity_type', params.opportunity_type);
+    if (params?.status) qs.set('status', params.status);
+    const q = qs.toString();
+    return request<FeedResponse>(`/api/v1/feed${q ? `?${q}` : ''}`);
+  },
   opportunity: (id: string) => request<Opportunity>(`/api/v1/opportunities/${id}`),
   updateStatus: (id: string, status: string) =>
     request(`/api/v1/opportunities/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),

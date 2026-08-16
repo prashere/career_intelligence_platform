@@ -5,6 +5,8 @@ import ProfileIntake from './pages/ProfileIntake'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import AdminSchedulers from './pages/AdminSchedulers'
+import AdminIngestion from './pages/AdminIngestion'
+import AdminIngestionPlayground from './pages/AdminIngestionPlayground'
 import { AppLayout } from './components/layout/AppLayout'
 import { ToastProvider } from './components/ui/Toast'
 import { AdminRoute, GuestRoute, ProtectedRoute } from './auth/ProtectedRoute'
@@ -26,6 +28,8 @@ export default function App() {
                   <Route path="/profile/setup" element={<ProfileIntake />} />
                   <Route path="/profile/intake" element={<Navigate to="/profile/setup" replace />} />
                   <Route path="/admin/schedulers" element={<AdminRoute><AdminSchedulers /></AdminRoute>} />
+                  <Route path="/admin/ingestion" element={<AdminRoute><AdminIngestion /></AdminRoute>} />
+                  <Route path="/admin/ingestion/playground" element={<AdminRoute><AdminIngestionPlayground /></AdminRoute>} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </AppLayout>

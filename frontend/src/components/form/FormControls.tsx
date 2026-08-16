@@ -227,7 +227,7 @@ export function ReviewBlock({
         {items.map(({ label, value }) => (
           <div key={label} className="review-item">
             <dt>{label}</dt>
-            <dd>{value || '—'}</dd>
+            <dd>{value || 'n/a'}</dd>
           </div>
         ))}
       </dl>

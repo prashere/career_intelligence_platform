@@ -42,7 +42,7 @@ export const HONORS_OPTIONS = [
 
 export const GPA_SCALES = [
   { value: '4.0', label: '4.0 scale (US-style)' },
-  { value: '100', label: 'Percentage (0–100)' },
+  { value: '100', label: 'Percentage (0 to 100)' },
   { value: '10', label: '10-point scale' },
   { value: 'UK', label: 'UK classification' },
   { value: 'other', label: 'Other' },
@@ -119,7 +119,7 @@ export const PRIORITY_COUNTRY_CHIPS = [
 ] as const;
 
 export const DISCOVERY_MODE_OPTIONS = [
-  { value: 'open', label: 'Open discovery — show best funded matches anywhere' },
+  { value: 'open', label: 'Open discovery, show best funded matches anywhere' },
   { value: 'target_list', label: 'Focus on specific universities I list' },
 ] as const;
 

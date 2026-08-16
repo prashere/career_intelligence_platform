@@ -322,7 +322,7 @@ export default function ProfileIntake() {
       <PageHeader
         eyebrow="Profile setup"
         title={FORM_STEPS[step]?.label ?? 'Setup'}
-        lead="Six short sections, about 10 minutes. Tell us about yourself — we'll match you to funded opportunities."
+        lead="Six short sections, about 10 minutes. Tell us about yourself, we'll match you to funded opportunities."
         actions={
           <Link to="/profile">
             <Button variant="ghost">Back to profile</Button>
@@ -339,7 +339,7 @@ export default function ProfileIntake() {
               <FormField label="Full name" required htmlFor={nameId}>
                 <input id={nameId} className="form-control" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} autoComplete="name" />
               </FormField>
-              <FormField label="Email" htmlFor={emailId} hint="Optional — for reminders later">
+              <FormField label="Email" htmlFor={emailId} hint="Optional, for reminders later">
                 <input id={emailId} type="email" className="form-control" value={form.email} onChange={(e) => update('email', e.target.value)} autoComplete="email" />
               </FormField>
             </FormRow>
@@ -384,7 +384,7 @@ export default function ProfileIntake() {
         )}
 
         {step === 1 && (
-          <FormSection title="Curriculum vitae" description="Upload your CV as PDF — we extract the text automatically. You can edit the result below.">
+          <FormSection title="Curriculum vitae" description="Upload your CV as PDF, we extract the text automatically. You can edit the result below.">
             <FileDropZone
               accept=".pdf,.txt,application/pdf,text/plain"
               label={cvUploading ? 'Extracting text…' : 'Drop CV here or click to upload'}
@@ -415,7 +415,7 @@ export default function ProfileIntake() {
         )}
 
         {step === 2 && (
-          <FormSection title="Education & language" description="Pre-fill what you know — CV extraction fills in remaining details.">
+          <FormSection title="Education & language" description="Pre-fill what you know, CV extraction fills in remaining details.">
             <FormRow>
               <FormField label="Highest degree" required>
                 <SelectInput
@@ -500,7 +500,7 @@ export default function ProfileIntake() {
         )}
 
         {step === 3 && (
-          <FormSection title="Goals & constraints" description="These drive filtering — be explicit about funding and regions.">
+          <FormSection title="Goals & constraints" description="These drive filtering, be explicit about funding and regions.">
             <FormField label="Primary target" required>
               <ChipGroup
                 options={['MSc', 'PhD', 'Fellowship', 'Internship', 'Mixed']}
@@ -542,7 +542,7 @@ export default function ProfileIntake() {
               />
               <input className="form-control" style={{ marginTop: '0.5rem' }} value={regionsInput} onChange={(e) => setRegionsInput(e.target.value)} placeholder="Or type: Germany, Europe, UK…" />
             </FormField>
-            <FormField label="Countries to prioritize" hint="Order matters — first picks rank higher">
+            <FormField label="Countries to prioritize" hint="Order matters, first picks rank higher">
               <ChipGroup
                 options={PRIORITY_COUNTRY_CHIPS}
                 selected={parseChipInput(countriesInput)}
@@ -634,7 +634,7 @@ export default function ProfileIntake() {
                   multi={false}
                 />
               </FormField>
-              <FormField label="Sources you already use" hint="Optional — helps prioritize familiar channels">
+              <FormField label="Sources you already use" hint="Optional, helps prioritize familiar channels">
                 <ChipGroup
                   options={SEARCH_SOURCE_OPTIONS}
                   selected={form.search_sources}
@@ -653,7 +653,7 @@ export default function ProfileIntake() {
                 hint={
                   form.discovery_mode === 'target_list'
                     ? 'Required when focusing on a target list'
-                    : 'Optional — leave blank for open discovery'
+                    : 'Optional, leave blank for open discovery'
                 }
               >
                 <input
@@ -745,7 +745,7 @@ export default function ProfileIntake() {
                 items={[
                   { label: 'Name', value: form.full_name },
                   { label: 'Nationality', value: countryNameByCode(form.nationality_code) },
-                  { label: 'Country', value: countryNameByCode(form.current_country_code) || '—' },
+                  { label: 'Country', value: countryNameByCode(form.current_country_code) || 'n/a' },
                   { label: 'LinkedIn', value: form.linkedin_url },
                 ]}
               />
@@ -755,9 +755,9 @@ export default function ProfileIntake() {
                   { label: 'Target', value: `${form.target_degree} · ${resolvedIntakeTerm()}` },
                   { label: 'Program style', value: programStyleReview() },
                   { label: 'Funding', value: fundingReview() },
-                  { label: 'Regions', value: regionsInput || '—' },
-                  { label: 'Countries', value: countriesInput || '—' },
-                  { label: 'Fields', value: fieldsInput || '—' },
+                  { label: 'Regions', value: regionsInput || 'n/a' },
+                  { label: 'Countries', value: countriesInput || 'n/a' },
+                  { label: 'Fields', value: fieldsInput || 'n/a' },
                 ]}
               />
               <ReviewBlock
@@ -769,11 +769,11 @@ export default function ProfileIntake() {
                       DISCOVERY_MODE_OPTIONS.find((o) => o.value === form.discovery_mode)?.label ??
                       form.discovery_mode,
                   },
-                  { label: 'Universities', value: form.target_universities || '—' },
-                  { label: 'Sources', value: form.search_sources.join(', ') || '—' },
+                  { label: 'Universities', value: form.target_universities || 'n/a' },
+                  { label: 'Sources', value: form.search_sources.join(', ') || 'n/a' },
                   { label: 'Relocation', value: form.open_to_relocation ? 'Open' : 'Prefer current region' },
-                  { label: 'Languages', value: form.other_languages.join(', ') || '—' },
-                  { label: 'Hours/week', value: form.hours_per_week || '—' },
+                  { label: 'Languages', value: form.other_languages.join(', ') || 'n/a' },
+                  { label: 'Hours/week', value: form.hours_per_week || 'n/a' },
                 ]}
               />
             </div>
