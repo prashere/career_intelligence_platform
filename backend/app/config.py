@@ -21,6 +21,12 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     tavily_api_key: str = ""
+
+    # LLM chat — Groq (free tier) or OpenAI. Embeddings remain on OpenAI until Gemini is wired.
+    llm_provider: str = ""  # "groq" | "openai" | empty (auto: groq if GROQ_API_KEY set)
+    groq_api_key: str = ""
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_chat_model: str = "llama-3.1-8b-instant"
     embedding_model: str = "text-embedding-3-small"
     chat_model: str = "gpt-4o-mini"
 

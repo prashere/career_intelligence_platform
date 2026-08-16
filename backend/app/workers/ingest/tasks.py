@@ -65,6 +65,30 @@ def fetch_source_task(source_id: str):
     return run_async(_fetch())
 
 
+@celery_app.task(name="app.workers.ingest.tasks.dispatch_due_sources_task")
+def dispatch_due_sources_task():
+    """Enqueue fetch for sources past next_fetch_at."""
+    async def _dispatch():
+        from datetime import datetime, timezone
+
+        async with async_session() as session:
+            now = datetime.now(timezone.utc)
+            result = await session.execute(
+                select(OpportunitySource).where(
+                    OpportunitySource.is_active.is_(True),
+                    (OpportunitySource.next_fetch_at.is_(None)) | (OpportunitySource.next_fetch_at <= now),
+                )
+            )
+            sources = result.scalars().all()
+            queued = []
+            for source in sources:
+                fetch_source_task.delay(source.id)
+                queued.append(source.name)
+            return {"queued": len(queued), "sources": queued}
+
+    return run_async(_dispatch())
+
+
 @celery_app.task(name="app.workers.ingest.tasks.rerank_all_task")
 def rerank_all_task():
     async def _rerank():

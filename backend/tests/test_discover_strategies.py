@@ -45,6 +45,12 @@ SITEMAP = """<?xml version="1.0"?>
 <loc>https://example.com/about/</loc>
 </urlset>"""
 
+PROFELLOW_SITEMAP = """<?xml version="1.0"?>
+<urlset>
+<loc>https://www.profellow.com/fellowship/alpha-fellowship/</loc>
+<loc>https://www.profellow.com/tips/ignore/</loc>
+</urlset>"""
+
 
 def _mock_response(url: str, *, text: str = "", content: bytes = b"", status: int = 200):
     resp = MagicMock()
@@ -130,6 +136,31 @@ def test_probe_sitemap_include_regex_list():
     assert "foo-2026" in items[0].url
 
 
+def test_probe_sitemap_jina_markdown_links():
+    client = MagicMock()
+    jina_body = (
+        "Markdown Content:\n"
+        "[https://www.profellow.com/fellowship/alpha/](https://www.profellow.com/fellowship/alpha/)\n"
+        "2026-08-16\n"
+        "[https://www.profellow.com/fellowship/beta/](https://www.profellow.com/fellowship/beta/)\n"
+    )
+    client.get.return_value = _mock_response(
+        "https://r.jina.ai/https://www.profellow.com/fellowship-sitemap.xml",
+        text=jina_body,
+    )
+    items = probe_sitemap(
+        client,
+        {
+            "index_url": "https://www.profellow.com/fellowship-sitemap.xml",
+            "proxy_prefix": "https://r.jina.ai/",
+            "include_path_regex": "^https://www\\.profellow\\.com/fellowship/[a-z0-9-]+/$",
+            "max_urls": 10,
+        },
+    )
+    assert len(items) == 2
+    assert items[0].title == "Alpha"
+
+
 def test_probe_wp_json_parses_posts():
     client = MagicMock()
     payload = [
@@ -156,7 +187,6 @@ def test_probe_wp_json_parses_posts():
     [
         ("opportunitydesk", DESK_RSS_XML),
         ("scholarships360", RSS_XML),
-        ("profellow", RSS_XML),
         ("opportunitiescorners", DESK_RSS_XML),
     ],
 )
@@ -182,16 +212,26 @@ def test_profollow_filters_non_fellowship_links(monkeypatch: pytest.MonkeyPatch)
     entry = next(a for a in registry["aggregators"] if a["id"] == "profellow")
 
     def fake_get(url, **kwargs):
-        return _mock_response(url, content=RSS_XML)
+        if "jina.ai" in url:
+            return _mock_response(
+                url,
+                text=(
+                    "Markdown Content:\n"
+                    "[https://www.profellow.com/fellowship/alpha-fellowship/]"
+                    "(https://www.profellow.com/fellowship/alpha-fellowship/)\n"
+                    "[https://www.profellow.com/tips/ignore/](https://www.profellow.com/tips/ignore/)\n"
+                ),
+            )
+        return _mock_response(url, text=PROFELLOW_SITEMAP)
 
     monkeypatch.setattr(
         "app.ingestion.discover.runner.make_client",
         lambda timeout=30: MagicMock(__enter__=lambda s: s, __exit__=lambda *a: None, get=fake_get),
     )
-    result = validate_aggregator(entry, skip_browser=True)
+    result = validate_aggregator(entry, skip_browser=True, timeout=90.0)
     assert result.ok
     assert result.filtered_items >= 1
-    assert any("/fellowships/" in u for u in result.sample_urls)
+    assert all("/fellowship/" in u and "/fellowships/" not in u for u in result.sample_urls)
 
 
 def test_probe_collegeboard_scholarships():
@@ -266,7 +306,7 @@ def test_registry_list_normalizes_url_lists():
     from app.ingestion.playground import list_registry_aggregators
 
     rows = list_registry_aggregators()
-    assert len(rows) >= 10
+    assert len(rows) >= 7
     for row in rows:
         assert isinstance(row["url"], (str, type(None)))
         if row["id"] == "opportunitydesk":

@@ -82,10 +82,19 @@ async def health():
 async def feed(
     search: str | None = Query(None),
     status: str | None = Query(None),
+    opportunity_type: str | None = Query(None),
+    funding_type: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     profile: UserProfile = Depends(get_current_user_profile),
 ):
-    return await _safe_feed(db, profile.id, search=search, status=status)
+    return await _safe_feed(
+        db,
+        profile.id,
+        search=search,
+        status=status,
+        opportunity_type=opportunity_type,
+        funding_type=funding_type,
+    )
 
 
 @router.get("/opportunities/{opportunity_id}", response_model=OpportunityResponse)

@@ -24,8 +24,8 @@ class DatabaseScheduler(PersistentScheduler):
         super().__init__(*args, **kwargs)
 
     def setup_schedule(self):
-        self.update_from_database()
         super().setup_schedule()
+        self.update_from_database()
 
     def tick(self, *args, **kwargs):
         self._maybe_sync_from_database()

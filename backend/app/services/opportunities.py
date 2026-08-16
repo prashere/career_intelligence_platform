@@ -12,6 +12,7 @@ from app.models import (
     Requirement,
     UserOpportunity,
     UserOpportunityStatus,
+    UserProfile,
 )
 from app.schemas import (
     FeedResponse,
@@ -55,7 +56,13 @@ async def get_feed(
     user_id: str,
     search: Optional[str] = None,
     status: Optional[str] = None,
+    opportunity_type: Optional[str] = None,
+    funding_type: Optional[str] = None,
+    *,
+    apply_eligibility: bool = True,
 ) -> FeedResponse:
+    from app.ingestion.eligibility import load_eligibility_rules, passes_eligibility
+
     query = (
         select(Opportunity, UserOpportunity)
         .outerjoin(
@@ -77,8 +84,17 @@ async def get_feed(
     if status:
         query = query.where(UserOpportunity.status == status)
 
+    if opportunity_type:
+        query = query.where(Opportunity.opportunity_type == opportunity_type)
+
+    if funding_type:
+        query = query.where(Opportunity.funding_type == funding_type)
+
     result = await session.execute(query)
     rows = result.all()
+    eligibility_rules = load_eligibility_rules() if apply_eligibility else {}
+
+    profile = await session.get(UserProfile, user_id) if apply_eligibility else None
 
     scholarships, fellowships, other = [], [], []
     now = datetime.now(timezone.utc)
@@ -89,6 +105,8 @@ async def get_feed(
     deadlines_week = 0
 
     for opp, uo in rows:
+        if apply_eligibility and eligibility_rules and not passes_eligibility(opp, eligibility_rules, profile):
+            continue
         resp = _to_response(opp, uo)
         if opp.created_at and opp.created_at >= tuesday:
             new_since += 1

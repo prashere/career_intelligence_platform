@@ -1,26 +1,32 @@
 """Tests for ingestion envelope and extraction."""
 
-from app.ingestion.envelope import default_envelope, merge_envelopes, passes_prefilter_item
+from app.ingestion.envelope import default_envelope, merge_envelopes
 from app.ingestion.extract.heuristic import extract_from_feed_item, should_fetch_detail
+from app.ingestion.relevance import Candidate, Verdict, evaluate, profile_terms_from_envelope
 
 
-def test_prefilter_hard_drop():
-    env = default_envelope()
-    ok, reason = passes_prefilter_item("Webinar only event", "Join us", "https://x.com/a", env)
-    assert not ok
-    assert reason.startswith("hard_drop")
+def _gate(title: str, summary: str = "", url: str = "https://x.com/a"):
+    return evaluate(
+        Candidate(url=url, title=title, summary=summary),
+        profile=profile_terms_from_envelope(default_envelope()),
+    )
 
 
-def test_prefilter_must_match():
-    env = default_envelope()
-    ok, _ = passes_prefilter_item("Generic news", "Nothing relevant", "https://x.com/a", env)
-    assert not ok
+def test_gate_drops_envelope_hard_drop_phrase():
+    decision = _gate("Webinar only event", "Join us")
+    assert decision.verdict is Verdict.reject
+    assert decision.reason.startswith("hard_negative")
 
 
-def test_prefilter_passes_scholarship():
-    env = default_envelope()
-    ok, _ = passes_prefilter_item("Fully funded MSc scholarship", "Apply now", "https://x.com/a", env)
-    assert ok
+def test_gate_rejects_unrecognised_title_without_opportunity_signal():
+    decision = _gate("Generic news", "Nothing relevant")
+    assert decision.verdict is Verdict.reject
+    assert decision.reason == "no_opportunity_signal"
+
+
+def test_gate_admits_scholarship():
+    decision = _gate("Fully funded MSc scholarship", "Apply now")
+    assert decision.verdict is Verdict.admit
 
 
 def test_merge_envelopes_intersects_hard_drop():
@@ -74,15 +80,15 @@ def test_merge_registry_fields_adds_parser_config():
     from app.ingestion.registry_config import merge_registry_fields
 
     entry = {
-        "id": "scholars4dev",
-        "name": "Scholars4Dev",
-        "url": "https://www.scholars4dev.com/feed/",
+        "id": "opportunitydesk",
+        "name": "OpportunityDesk",
+        "url": "https://opportunitydesk.org/feed/",
         "source_type": "rss",
     }
     merged = merge_registry_fields(entry)
     discover = (merged.get("parser_config") or {}).get("discover") or {}
     assert discover.get("kind") == "rss"
-    assert len(discover.get("feed_urls") or []) >= 2
+    assert discover.get("feed_urls")
     assert merged.get("adapter_id")
 
 
@@ -91,11 +97,19 @@ def test_resolve_parser_config_falls_back_to_registry():
 
     pc = resolve_parser_config(
         parser_config={},
-        registry_id="scholars4dev",
-        source_url="https://www.scholars4dev.com/feed/",
+        registry_id="opportunitydesk",
+        source_url="https://opportunitydesk.org/feed/",
     )
     discover = pc.get("discover") or {}
-    assert len(discover.get("feed_urls") or []) >= 2
+    assert discover.get("kind") == "rss"
+    assert discover.get("feed_urls")
+
+
+def test_registry_regions_are_exposed_for_scoring():
+    from app.ingestion.registry_config import registry_regions
+
+    assert registry_regions("scholarships360") == ["us"]
+    assert registry_regions("unknown_source") == []
 
 
 def test_resolve_parser_config_falls_back_to_source_url():

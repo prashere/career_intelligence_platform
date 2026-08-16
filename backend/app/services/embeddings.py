@@ -4,20 +4,26 @@ from openai import AsyncOpenAI
 
 from app.config import settings
 
-_client: Optional[AsyncOpenAI] = None
+_embedding_client: Optional[AsyncOpenAI] = None
 
 
-def get_openai_client() -> Optional[AsyncOpenAI]:
-    global _client
+def get_embedding_client() -> Optional[AsyncOpenAI]:
+    """Embeddings still use OpenAI (or a future Gemini provider). Groq has no embed API."""
+    global _embedding_client
     if not settings.openai_api_key:
         return None
-    if _client is None:
-        _client = AsyncOpenAI(api_key=settings.openai_api_key)
-    return _client
+    if _embedding_client is None:
+        _embedding_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    return _embedding_client
+
+
+# Backward-compatible alias used by older code paths.
+def get_openai_client() -> Optional[AsyncOpenAI]:
+    return get_embedding_client()
 
 
 async def embed_text(text: str) -> Optional[list[float]]:
-    client = get_openai_client()
+    client = get_embedding_client()
     if not client or not text.strip():
         return None
     try:
@@ -30,24 +36,5 @@ async def embed_text(text: str) -> Optional[list[float]]:
         return None
 
 
-async def chat_completion(messages: list[dict], stream: bool = False):
-    client = get_openai_client()
-    if not client:
-        fallback = "AI features require OPENAI_API_KEY to be configured."
-        if stream:
-            async def _gen():
-                yield fallback
-            return _gen()
-        return fallback
-
-    if stream:
-        return client.chat.completions.create(
-            model=settings.chat_model,
-            messages=messages,
-            stream=True,
-        )
-    response = await client.chat.completions.create(
-        model=settings.chat_model,
-        messages=messages,
-    )
-    return response.choices[0].message.content or ""
+# Re-export chat helpers so existing imports keep working.
+from app.services.llm import chat_completion, chat_configured, get_chat_client, get_chat_model

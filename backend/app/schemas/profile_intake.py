@@ -148,7 +148,7 @@ class AggregatorSelection(BaseModel):
 
 
 class ProfileSources(BaseModel):
-    """Per-user source preferences — aggregator IDs reference backend/app/data/source-registry.yaml."""
+    """Per-user source preferences — aggregator IDs reference config/sources/source-registry.yaml."""
 
     aggregators: list[AggregatorSelection] = Field(default_factory=list)
     manual_channels: list[str] = Field(default_factory=list)

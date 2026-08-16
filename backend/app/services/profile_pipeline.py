@@ -28,9 +28,12 @@ from app.services.profile_intake import (
     validate_structured_profile,
     _extract_prompt_block,
 )
+from app.ingestion.registry_config import normalize_source_url
 from app.source_registry_paths import SOURCE_REGISTRY_PATH
 
 # Form chip labels → registry IDs (non-RSS chips map to None)
+INGESTABLE_SOURCE_TYPES = frozenset({"rss", "html"})
+
 SEARCH_CHIP_TO_REGISTRY: dict[str, str | None] = {
     "Scholars4Dev": "scholars4dev",
     "DAAD": "daad",
@@ -38,6 +41,8 @@ SEARCH_CHIP_TO_REGISTRY: dict[str, str | None] = {
     "Opportunity Desk": "opportunity_desk",
     "FundsForNGOs": "fundsforngos",
     "Mladiinfo": "mladiinfo",
+    "YouthOp": "youthop",
+    "ScholarshipTab": "scholarshiptab",
     "University websites": None,
     "LinkedIn": None,
     "FindAPhD / MastersPortal": None,
@@ -94,7 +99,7 @@ def load_source_registry() -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(
             f"Source registry not found: {path}. "
-            "Expected git-tracked file at backend/app/data/source-registry.yaml"
+            "Expected git-tracked file at config/sources/source-registry.yaml"
         )
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
@@ -269,7 +274,7 @@ def score_aggregators(form: dict[str, Any], registry: dict[str, Any] | None = No
 
     scored: list[dict[str, Any]] = []
     for entry in registry.get("aggregators", []):
-        if entry.get("type") != "rss":
+        if entry.get("type") not in INGESTABLE_SOURCE_TYPES:
             continue
         degrees = entry.get("degree_levels") or []
         if target_degree and degrees and target_degree not in degrees:
@@ -855,11 +860,17 @@ def _build_ingestion_sources(profile: StructuredProfile) -> dict[str, Any]:
             {
                 "id": sel.id,
                 "name": entry["name"],
-                "url": entry["url"],
+                "url": normalize_source_url(entry["url"]),
                 "source_type": entry.get("type", "rss"),
                 "fetch_interval_minutes": entry.get("fetch_interval_minutes", 360),
                 "is_active": True,
                 "selection_reason": sel.selection_reason or "profile selection",
+                "adapter_id": entry.get("adapter_id"),
+                "summary_completeness": entry.get("summary_completeness", "snippet_only"),
+                "authority": entry.get("authority"),
+                "politeness_delay_ms": entry.get("politeness_delay_ms"),
+                "fetch_mode": entry.get("fetch_mode", "http"),
+                "parser_config": entry.get("parser_config") or {},
             }
         )
 
