@@ -202,66 +202,6 @@ aggregators:
         aggregators. Particularly useful for U.S. undergraduate and graduate
         funding, but geographic eligibility must be checked per award.
 
-  - id: bold
-    name: Bold.org
-    url: https://bold.org/
-    type: html
-    regions: [us]
-    tags: [scholarship, financial-aid, graduate-school, undergraduate, donor-funded]
-    degree_levels: [BSc, MSc, PhD, Mixed]
-    funding_signal: high
-    fetch_interval_minutes: 720
-    chip_label: Bold.org
-    confidence: verified
-    adapter_id: bold_html_v1
-    summary_completeness: full
-    authority: 0.84
-    politeness_delay_ms: 3000
-    fetch_mode: http
-
-    parser_config:
-      version: 1
-      discover:
-        kind: sitemap
-        index_url: https://bold.org/sitemap.xml
-        include_path_regex: '^https://bold.org/scholarships/(?!by-)(?!.*-list$)[a-z0-9-]+(?:-[a-z0-9-]+)*/$'
-        max_urls: 100
-      extract:
-        detail_fetch: required
-        ladder:
-          structured: true
-          adapter: true
-          heuristic: true
-        detail:
-          title: "h1"
-          content: "main"
-          remove:
-            - "nav"
-            - "footer"
-            - "script"
-            - "style"
-      deadline_patterns:
-        - '(?i)deadline[:\s]+([^<\n.]+)'
-        - '(?i)application deadline[:\s]+([^<\n.]+)'
-        - '(?i)apply by[:\s]+([^<\n.]+)'
-      canonical:
-        strip_query_params: [utm_source, utm_medium, utm_campaign, utm_content, fbclid]
-      filters:
-        exclude_link_regex:
-          - '(?i)/about/'
-          - '(?i)/contact/'
-          - '(?i)/careers/'
-          - '(?i)/press/'
-          - '(?i)/reviews/'
-          - '(?i)/terms/'
-      notes: >
-        Scholarship platform where individuals and organizations create and
-        fund awards. Strong source for platform-exclusive donor-funded
-        scholarships. Unlike a conventional editorial aggregator, the
-        opportunity itself is hosted within the platform, so provenance
-        should be represented as platform-hosted rather than third-party
-        aggregation.
-
   - id: bigfuture
     name: BigFuture
     url: https://bigfuture.collegeboard.org/scholarship-search
@@ -333,158 +273,7 @@ aggregators:
         College Board-operated scholarship and college-planning ecosystem.
         Strong institutional provenance. Primarily relevant to U.S. students
         and U.S. undergraduate funding. Do not generalize its reliability to
-        every external link merely because the discovery platform is reputable.
-
-  - id: careeronestop
-    name: CareerOneStop
-    url: https://www.careeronestop.org/Toolkit/Training/find-scholarships.aspx
-    type: html
-    regions: [us, international-to-us]
-    tags: [scholarship, fellowship, grant, financial-aid, career, training]
-    degree_levels: [BSc, MSc, PhD, Fellowship, Mixed]
-    funding_signal: high
-    fetch_interval_minutes: 720
-    chip_label: CareerOneStop
-    confidence: verified
-    adapter_id: careeronestop_scholarship_finder_v1
-    summary_completeness: full
-    authority: 0.98
-    politeness_delay_ms: 3000
-    fetch_mode: http
-
-    parser_config:
-      version: 1
-      discover:
-        kind: hybrid
-        stop_on_first_success: true
-        request_timeout_ms: 90000
-        region_blocked_hint: true
-        strategies:
-          - kind: jina_html
-            entry_urls:
-              - https://www.careeronestop.org/Toolkit/Training/find-scholarships.aspx?curPage=1
-            url_base: https://www.careeronestop.org/Toolkit/Training/
-            link_pattern: "(?i)find-scholarships-detail\\.aspx\\?[^\\s\"]*scholarshipId=\\d+"
-            pagination:
-              param: curPage
-              start: 1
-              max_pages: 3
-            max_entries: 100
-          - kind: html
-            requires_browser: true
-            entry_urls:
-              - https://www.careeronestop.org/Toolkit/Training/find-scholarships.aspx
-            link_selector: 'a[href*="find-scholarships-detail"]'
-            max_entries: 100
-      extract:
-        detail_fetch: required
-        ladder:
-          structured: true
-          adapter: true
-          heuristic: true
-        detail:
-          title: "h1"
-          content: "main"
-          remove:
-            - "nav"
-            - "footer"
-            - "script"
-            - "style"
-      deadline_patterns:
-        - '(?i)deadline[:\s]+([^<\n.]+)'
-        - '(?i)deadline month[:\s]+([^<\n.]+)'
-      canonical:
-        strip_query_params: [utm_source, utm_medium, utm_campaign, fbclid]
-      filters:
-        require_link_regex:
-          - '(?i)find-scholarships-detail\.aspx.*scholarshipId=\d+'
-        exclude_link_regex:
-          - '(?i)/about/'
-          - '(?i)/contact/'
-          - '(?i)/privacy/'
-          - '(?i)/terms/'
-      notes: >
-        U.S. Department of Labor-sponsored career and education resource.
-        Scholarship Finder contains more than 9,500 scholarships, fellowships,
-        grants, loans, prizes and related awards. Data is partly provided
-        under license by Gale/Cengage and partly by CareerOneStop. The source
-        itself advises users to verify current deadlines and eligibility with
-        the sponsoring organization, so downstream validation remains mandatory.
-
-  - id: scholarshipportal
-    name: ScholarshipPortal
-    url: https://www.mastersportal.com/scholarships
-    type: html
-    regions: [europe, global]
-    tags: [scholarship, funding, masters, phd, europe, international]
-    degree_levels: [MSc, PhD, Fellowship, Mixed]
-    funding_signal: high
-    fetch_interval_minutes: 720
-    chip_label: ScholarshipPortal
-    confidence: verified
-    adapter_id: scholarshipportal_html_v1
-    summary_completeness: full
-    authority: 0.90
-    politeness_delay_ms: 3000
-    fetch_mode: http
-
-    parser_config:
-      version: 1
-      discover:
-        kind: hybrid
-        stop_on_first_success: true
-        request_timeout_ms: 90000
-        strategies:
-          - kind: jina_html
-            entry_urls:
-              - https://www.mastersportal.com/search/scholarships/master
-            link_pattern: "(?i)https?://www\\.mastersportal\\.com/scholarships/[^\\s\")#]+"
-            max_entries: 100
-          - kind: html
-            requires_browser: true
-            entry_urls:
-              - https://www.mastersportal.com/scholarships
-            link_selector: 'a[href*="/scholarships/"]'
-            max_entries: 100
-      extract:
-        detail_fetch: required
-        ladder:
-          structured: true
-          adapter: true
-          heuristic: true
-        detail:
-          title: "h1"
-          content: "main"
-          remove:
-            - "nav"
-            - "footer"
-            - "script"
-            - "style"
-      deadline_patterns:
-        - '(?i)deadline[:\s]+([^<\n.]+)'
-        - '(?i)application deadline[:\s]+([^<\n.]+)'
-        - '(?i)apply by[:\s]+([^<\n.]+)'
-      canonical:
-        strip_query_params: [utm_source, utm_medium, utm_campaign, fbclid]
-      filters:
-        require_link_regex:
-          - '(?i)mastersportal\.com/scholarships/(?:\d+|[a-z0-9-]+)'
-        exclude_link_regex:
-          - '(?i)/about/'
-          - '(?i)/contact/'
-          - '(?i)/advertise/'
-          - '(?i)/privacy/'
-          - '(?i)/terms/'
-          - '(?i)/search/'
-          - '(?i)#/'
-          - '(?i)/scholarships/master$'
-          - '(?i)/scholarships/phd$'
-          - '(?i)/scholarships/$'
-      notes: >
-        European study-funding discovery platform with particularly strong
-        relevance to European higher education. Best treated as a structured
-        scholarship discovery database rather than a general youth-opportunity
-        feed. Always retain sponsor/university links for final verification.
+        every external link         merely because the discovery platform is reputable.
 
   - id: scholarpositions
     name: ScholarPositions
@@ -631,8 +420,8 @@ aggregators:
 
   - id: profellow
     name: ProFellow
-    url: https://www.profellow.com/feed/
-    type: rss
+    url: https://www.profellow.com/fellowship/
+    type: html
     regions: [us, global]
     tags: [fellowship, graduate-school, phd, professional-development, leadership, research, grant]
     degree_levels: [MSc, PhD, Fellowship, Postdoc, Mixed]
@@ -649,13 +438,17 @@ aggregators:
     parser_config:
       version: 1
       discover:
-        kind: rss
-        feed_urls:
-          - https://www.profellow.com/feed/
-        max_entries: 50
-        dedupe_by: link
+        kind: sitemap
+        index_url: https://www.profellow.com/fellowship-sitemap.xml
+        proxy_prefix: https://r.jina.ai/
+        include_path_regex: '^https://www\.profellow\.com/fellowship/[a-z0-9-]+/$'
+        max_urls: 100
+        request_timeout_ms: 90000
+        cloudflare: true
       extract:
         detail_fetch: required
+        proxy_prefix: https://r.jina.ai/
+        content_format: jina_markdown
         ladder:
           structured: true
           adapter: true
@@ -678,6 +471,8 @@ aggregators:
       canonical:
         strip_query_params: [utm_source, utm_medium, utm_campaign, utm_content, fbclid]
       filters:
+        require_link_regex:
+          - '(?i)profellow\.com/fellowship/[a-z0-9-]+/$'
         exclude_link_regex:
           - '(?i)/about/'
           - '(?i)/contact/'
@@ -685,11 +480,19 @@ aggregators:
           - '(?i)/careers/'
           - '(?i)/privacy/'
           - '(?i)/terms/'
+          - '(?i)/tips/'
+          - '(?i)/interviews/'
+          - '(?i)/askdrjohnson/'
+          - '(?i)/announcements/'
+          - '(?i)/articles/'
+          - '(?i)/fellowships/'
       notes: >
-        Fellowship-specialist discovery platform with strong relevance to
-        postgraduate study, doctoral research, professional development,
-        leadership and international experiences. Particularly valuable when
-        the target is fellowships rather than generic scholarships.
+        Fellowship database pages live under /fellowship/{slug}/ (singular).
+        The sitewide RSS and /fellowships/ paths are editorial listicles,
+        tips, interviews and announcements — not ingest targets. Discovery
+        uses fellowship-sitemap.xml via the Jina reader because direct HTTP
+        is Cloudflare-blocked. Always follow sponsor links for current
+        deadlines and eligibility.
 
 # Recommended source-level quality model.
 # These fields are intentionally separate from "authority".
