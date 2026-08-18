@@ -22,6 +22,34 @@ class IntakeSubmitResponse(BaseModel):
     ok: bool = True
     submission_id: str
     saved_to: str
+    pipeline_run_id: Optional[str] = None
+    status: str = "queued"
+
+
+class PipelineStepStatus(BaseModel):
+    name: str
+    status: str
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    error: Optional[str] = None
+    logs: list[str] = Field(default_factory=list)
+
+
+class PipelineStatus(BaseModel):
+    id: str
+    status: str
+    current_step: Optional[str] = None
+    steps: list[PipelineStepStatus] = Field(default_factory=list)
+    error: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+
+
+class ProfileSummary(BaseModel):
+    full_name: Optional[str] = None
+    discovery_mode: Optional[str] = None
+    aggregator_names: list[str] = Field(default_factory=list)
+    profile_truth_excerpt: Optional[str] = None
 
 
 class IntakeCvUpdate(BaseModel):
@@ -63,3 +91,12 @@ class IntakeStatusResponse(BaseModel):
     has_compiled_artifacts: bool = False
     has_profile_truth: bool = False
     updated_at: Optional[str] = None
+    pipeline: Optional[PipelineStatus] = None
+    summary: Optional[ProfileSummary] = None
+
+
+class IntakeStructuredResponse(BaseModel):
+    profile: dict[str, Any]
+    profile_truth: Optional[str] = None
+    confidence: Optional[str] = None
+    fields_needing_review: list[str] = Field(default_factory=list)

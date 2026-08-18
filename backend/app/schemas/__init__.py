@@ -26,6 +26,8 @@ class OpportunitySourceResponse(BaseModel):
     is_active: bool
     last_fetched_at: Optional[datetime] = None
     last_error: Optional[str] = None
+    outcome_stats: Optional[dict] = None
+    authority: Optional[float] = None
 
     model_config = {"from_attributes": True}
 
@@ -46,6 +48,9 @@ class OpportunityResponse(BaseModel):
     fit_score: Optional[float] = None
     fit_level: Optional[str] = None
     fit_explanation: Optional[str] = None
+    score_breakdown: Optional[dict] = None
+    verification_status: Optional[str] = None
+    verified_at: Optional[datetime] = None
     days_until_deadline: Optional[int] = None
     urgency_label: Optional[str] = None
 
