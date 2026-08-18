@@ -1,0 +1,1 @@
+"""Opportunity verification / trust layer."""
