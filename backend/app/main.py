@@ -1,4 +1,3 @@
-import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -8,9 +7,14 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.profile_intake import router as intake_router
 from app.config import settings
 from app.database import async_session
+from app.logging_config import configure_logging, get_logger
 from app.startup import run_startup_tasks
+from app.telemetry.langsmith import configure_langsmith
 
-logger = structlog.get_logger()
+configure_logging()
+configure_langsmith()
+
+logger = get_logger()
 
 app = FastAPI(
     title="Career Intelligence System",
