@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ingestion.contracts import DiscoverItem, StrategyProbeResult
+from app.ingestion.canonicalize import canonicalize_url
 from app.ingestion.dedupe import upsert_opportunity
 from app.ingestion.discover.production import discover_items
 from app.ingestion.discover.strategies import title_from_url_slug
@@ -44,9 +45,66 @@ from app.ingestion.http_client import make_client
 from app.ingestion.tracing import IngestionTracer
 from app.models import OpportunitySource, RawDocument
 from app.models.ingestion import IngestionRun, IngestionRunStatus, RejectedItem, RejectedStage, TraceLevel
+from app.ingestion.source_health import record_source_failure
 from app.services.ingestion import hash_content, hash_url
 
 DEFAULT_INVESTIGATION_BUDGET = 40
+PENDING_INVESTIGATE_KEY = "pending_investigate"
+MAX_PENDING_INVESTIGATE = 50
+
+
+def _pending_investigate_list(parser_config: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = parser_config.get(PENDING_INVESTIGATE_KEY) or []
+    return [dict(x) for x in raw if isinstance(x, dict) and x.get("url")]
+
+
+def _save_pending_investigate(
+    parser_config: dict[str, Any],
+    entries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    merged = _pending_investigate_list(parser_config)
+    seen = {e["url"] for e in merged}
+    for entry in entries:
+        url = entry.get("url")
+        if not url or url in seen:
+            continue
+        merged.append(entry)
+        seen.add(url)
+    parser_config[PENDING_INVESTIGATE_KEY] = merged[:MAX_PENDING_INVESTIGATE]
+    return parser_config
+
+
+def _remove_pending_urls(parser_config: dict[str, Any], urls: set[str]) -> dict[str, Any]:
+    if not urls:
+        return parser_config
+    kept = [e for e in _pending_investigate_list(parser_config) if e.get("url") not in urls]
+    parser_config[PENDING_INVESTIGATE_KEY] = kept
+    return parser_config
+
+
+def _merge_pending_into_discover(
+    items: list[DiscoverItem],
+    parser_config: dict[str, Any],
+) -> list[DiscoverItem]:
+    """Re-queue deferred investigate URLs that may not reappear in the next RSS pass."""
+    pending = _pending_investigate_list(parser_config)
+    if not pending:
+        return items
+    known = {item.url for item in items if item.url}
+    merged = list(items)
+    for entry in pending:
+        url = entry.get("url")
+        if not url or url in known:
+            continue
+        merged.append(
+            DiscoverItem(
+                url=url,
+                title=entry.get("title") or "",
+                summary=entry.get("summary") or "",
+            )
+        )
+        known.add(url)
+    return merged
 
 
 def _parser_config(source: OpportunitySource) -> dict[str, Any]:
@@ -137,6 +195,7 @@ async def run_source_ingestion(
     dry_run: bool = False,
     mode: str = "production",
     investigation_budget: int | None = None,
+    interest_envelope: dict | None = None,
 ) -> dict[str, Any]:
     source = await session.get(OpportunitySource, source_id)
     if not source or not source.is_active:
@@ -149,7 +208,7 @@ async def run_source_ingestion(
             source.last_error = (
                 "fetch_mode=browser — install playwright (pip install playwright && playwright install chromium)"
             )
-            source.consecutive_failures = (source.consecutive_failures or 0) + 1
+            record_source_failure(source, source.last_error)
             await session.commit()
             return {"ok": False, "error": source.last_error, "skipped": True}
 
@@ -171,11 +230,21 @@ async def run_source_ingestion(
     )
 
     parser_config = _parser_config(source)
-    envelope = await get_platform_envelope(session)
+    if interest_envelope is not None:
+        envelope = interest_envelope
+    else:
+        envelope = await get_platform_envelope(session)
     profile = profile_terms_from_envelope(envelope)
     relevance_cfg = get_relevance_config()
     source_regions = registry_regions(source.registry_id)
     budget = investigation_budget if investigation_budget is not None else DEFAULT_INVESTIGATION_BUDGET
+
+    # Snapshot envelope on this run so filtering criteria are auditable and consistent.
+    run.meta = {
+        **(run.meta or {}),
+        "interest_envelope": envelope,
+        "envelope_snapshot_at": datetime.now(timezone.utc).isoformat(),
+    }
 
     discover_cfg = parser_config.get("discover") or {}
     timeout_ms = discover_cfg.get("request_timeout_ms") or 35000
@@ -198,6 +267,7 @@ async def run_source_ingestion(
         "updated": 0,
         "rejected": 0,
         "errors": 0,
+        "deferred_investigate": 0,
         "strategy_probes": [],
     }
 
@@ -220,6 +290,7 @@ async def run_source_ingestion(
                     use_browser=use_browser,
                     tracer=tracer,
                 )
+                items = _merge_pending_into_discover(items, parser_config)
                 stats["strategy_probes"] = [_serialize_probe(p) for p in probes]
                 stats["discovered"] = len(items)
                 run.discovered = len(items)
@@ -233,8 +304,7 @@ async def run_source_ingestion(
                     run.status = IngestionRunStatus.partial
                     run.error_message = "No items discovered"
                     source.last_error = run.error_message if not dry_run else source.last_error
-                    if not dry_run:
-                        source.consecutive_failures = (source.consecutive_failures or 0) + 1
+                    # Empty discover is not a transport failure — do not increment failures.
                     session.add(
                         RejectedItem(
                             run_id=run.id,
@@ -300,13 +370,32 @@ async def run_source_ingestion(
                     stats["investigated"] = min(len(investigate), budget)
 
                     if len(investigate) > budget:
+                        deferred = investigate[budget:]
+                        stats["deferred_investigate"] = len(deferred)
+                        deferred_entries = [
+                            {
+                                "url": item.url,
+                                "title": item.title,
+                                "summary": item.summary,
+                                "deferred_at": datetime.now(timezone.utc).isoformat(),
+                                "reason": decision.reason,
+                            }
+                            for item, decision in deferred
+                        ]
+                        parser_config = _save_pending_investigate(parser_config, deferred_entries)
+                        source.parser_config = {**(source.parser_config or {}), **parser_config}
+                        run.meta = {
+                            **(run.meta or {}),
+                            "deferred_investigate_urls": [e["url"] for e in deferred_entries],
+                        }
                         await tracer.emit(
                             "triage",
                             "investigation_budget",
-                            f"Investigation budget reached, deferring {len(investigate) - budget} items",
+                            f"Investigation budget reached, deferring {len(deferred)} items to pending queue",
                             level=TraceLevel.warn,
                             budget=budget,
                             pending=len(investigate),
+                            deferred=len(deferred),
                         )
 
                     await tracer.emit(
@@ -321,6 +410,7 @@ async def run_source_ingestion(
 
                 # Pass 2: fetch, re-score with full text, then persist.
                 queue = admitted + investigate[:budget]
+                processed_urls: set[str] = set()
 
                 async with tracer.stage("process"):
                     for item, triage in queue:
@@ -353,9 +443,10 @@ async def run_source_ingestion(
                                     config=relevance_cfg,
                                     stage="post_extract",
                                 )
-                                if final.verdict is Verdict.reject:
+                                if final.verdict is not Verdict.admit:
                                     stats["rejected_after_detail"] += 1
-                                    _record_rejection(session, run, source.id, item, final)
+                                    if final.verdict is Verdict.reject:
+                                        _record_rejection(session, run, source.id, item, final)
                                     await tracer.item_event(
                                         "relevance",
                                         "post_extract_reject",
@@ -377,7 +468,10 @@ async def run_source_ingestion(
                                 item,
                                 outcome,
                                 run,
+                                gate_decision=final,
                             )
+                            if item.url:
+                                processed_urls.add(item.url)
                             if created_flag is True:
                                 stats["created"] += 1
                                 await tracer.item_event(
@@ -422,8 +516,12 @@ async def run_source_ingestion(
                                 title=item.title,
                             )
 
+                    if processed_urls:
+                        parser_config = _remove_pending_urls(parser_config, processed_urls)
+                        source.parser_config = {**(source.parser_config or {}), **parser_config}
+
             stats["prefilter_drop"] = stats["rejected_at_discover"] + stats["rejected_after_detail"]
-            stats["rejected"] = stats["prefilter_drop"]
+            stats["rejected"] = stats["prefilter_drop"] + stats["errors"]
 
             run.discovered = stats["discovered"]
             run.prefilter_drop = stats["prefilter_drop"]
@@ -439,6 +537,7 @@ async def run_source_ingestion(
                     "investigated": stats["investigated"],
                     "rejected_at_discover": stats["rejected_at_discover"],
                     "rejected_after_detail": stats["rejected_after_detail"],
+                    "deferred_investigate": stats["deferred_investigate"],
                 },
             }
             run.status = (
@@ -450,9 +549,16 @@ async def run_source_ingestion(
             )
             if not dry_run:
                 source.last_fetched_at = datetime.now(timezone.utc)
-                source.last_error = None
-                source.consecutive_failures = 0
+                if run.status == IngestionRunStatus.completed and stats["errors"] == 0:
+                    source.last_error = None
+                    source.consecutive_failures = 0
+                elif run.status == IngestionRunStatus.failed:
+                    record_source_failure(source, run.error_message or "ingestion failed")
             _finish_run(run, source, dry_run=dry_run)
+            if not dry_run:
+                from app.services.source_outcomes import update_source_outcome_stats
+
+                await update_source_outcome_stats(session, source, stats, commit=False)
             await tracer.emit(
                 "run",
                 "run_complete",
@@ -482,7 +588,7 @@ async def run_source_ingestion(
         stats["errors"] += 1
         if not dry_run:
             source.last_error = str(exc)
-            source.consecutive_failures = (source.consecutive_failures or 0) + 1
+            record_source_failure(source, str(exc))
         await tracer.emit("run", "run_failed", str(exc), level=TraceLevel.error)
         _finish_run(run, source, dry_run=dry_run)
         await session.commit()
@@ -575,12 +681,15 @@ async def _persist_item(
     item: DiscoverItem,
     outcome: FetchOutcome,
     run: IngestionRun,
+    *,
+    gate_decision: Decision | None = None,
 ) -> Optional[bool]:
     """Store the raw document and upsert the opportunity. True if created."""
     detail_doc_id: Optional[str] = None
 
     if item.url:
-        url_h = hash_url(item.url)
+        canonical_url = canonicalize_url(item.url, source.parser_config or {})
+        url_h = hash_url(canonical_url)
         content_h = hash_content(outcome.raw_content)
         fetch_kind = "detail" if outcome.detail_fetched else "index"
 
@@ -609,15 +718,31 @@ async def _persist_item(
             await session.flush()
         detail_doc_id = doc.id
 
-    _, created = await upsert_opportunity(
+    ingestion_meta: dict[str, Any] | None = None
+    if gate_decision is not None:
+        ingestion_meta = {
+            "gate": gate_decision.to_dict(),
+            "low_fit_admitted": gate_decision.fit_score < 0.15 and gate_decision.corpus_score >= 0.55,
+            "deadline_parsed": outcome.extracted.deadline is not None,
+            "extraction_confidence": outcome.extracted.extraction_confidence,
+            "field_provenance": outcome.extracted.field_provenance,
+            "run_id": run.id,
+        }
+
+    _, created, updated = await upsert_opportunity(
         session,
         source,
         item.url,
         outcome.extracted,
         detail_doc_id,
         outcome.raw_content,
+        ingestion_meta=ingestion_meta,
     )
-    return created
+    if created:
+        return True
+    if updated:
+        return False
+    return None
 
 
 def _finish_run(run: IngestionRun, source: OpportunitySource, *, dry_run: bool = False) -> None:
