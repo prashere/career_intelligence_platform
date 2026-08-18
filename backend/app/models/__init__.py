@@ -1,10 +1,16 @@
 from app.models.core import (
+    ProfileIntakeDraft,
+    ProfilePipelineRun,
+    ProfilePipelineRunStatus,
+    ProfileSubmission,
     ScheduleKind,
     SchedulerCategory,
     SchedulerJob,
     User,
     UserProfile,
+    UserProfileArtifacts,
     UserRole,
+    UserStructuredProfile,
 )
 from app.models.ingestion import (
     IngestionRun,
@@ -34,12 +40,14 @@ from app.models.legacy import (
     UserOpportunity,
     UserOpportunityStatus,
 )
+from app.models.verification import DomainLegitimacyCache, OrgDomainCache, VerificationStatus
 
 __all__ = [
     "AgentThread",
     "Application",
     "Community",
     "DocumentChunk",
+    "DomainLegitimacyCache",
     "Experience",
     "FitLevel",
     "IngestionRun",
@@ -50,8 +58,13 @@ __all__ = [
     "Opportunity",
     "OpportunitySource",
     "OpportunityType",
+    "OrgDomainCache",
     "Person",
     "PlatformSettings",
+    "ProfileIntakeDraft",
+    "ProfilePipelineRun",
+    "ProfilePipelineRunStatus",
+    "ProfileSubmission",
     "RawDocument",
     "RejectedItem",
     "RejectedStage",
@@ -65,5 +78,8 @@ __all__ = [
     "UserOpportunity",
     "UserOpportunityStatus",
     "UserProfile",
+    "UserProfileArtifacts",
     "UserRole",
+    "UserStructuredProfile",
+    "VerificationStatus",
 ]
