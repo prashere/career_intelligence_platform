@@ -45,6 +45,15 @@ class User(Base):
     )
 
     profile: Mapped[Optional["UserProfile"]] = relationship(back_populates="user", uselist=False)
+    intake_draft: Mapped[Optional["ProfileIntakeDraft"]] = relationship(
+        back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
+    structured_profile: Mapped[Optional["UserStructuredProfile"]] = relationship(
+        back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
+    profile_artifacts: Mapped[Optional["UserProfileArtifacts"]] = relationship(
+        back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
 
 
 class UserProfile(Base):
@@ -69,6 +78,99 @@ class UserProfile(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="profile")
+
+
+class ProfileIntakeDraft(Base):
+    __tablename__ = "profile_intake_drafts"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True
+    )
+    step: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    form: Mapped[dict] = mapped_column(JSONB, default=dict)
+    cv_text: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="intake_draft")
+
+
+class ProfileSubmission(Base):
+    __tablename__ = "profile_submissions"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    submission_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    form: Mapped[dict] = mapped_column(JSONB, default=dict)
+    cv_text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship()
+
+
+class UserStructuredProfile(Base):
+    __tablename__ = "user_structured_profiles"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True
+    )
+    data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    prefill: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    extraction: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    schema_version: Mapped[str] = mapped_column(String(16), default="1.0", nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="structured_profile")
+
+
+class UserProfileArtifacts(Base):
+    __tablename__ = "user_profile_artifacts"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True
+    )
+    filter_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    eligibility_rules: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    ranking_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    ingestion_sources: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    profile_truth: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    compiled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="profile_artifacts")
+
+
+class ProfilePipelineRunStatus(str, enum.Enum):
+    queued = "queued"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+
+
+class ProfilePipelineRun(Base):
+    __tablename__ = "profile_pipeline_runs"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    submission_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[ProfilePipelineRunStatus] = mapped_column(
+        Enum(ProfilePipelineRunStatus),
+        default=ProfilePipelineRunStatus.queued,
+        nullable=False,
+    )
+    current_step: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    steps: Mapped[list] = mapped_column(JSONB, default=list)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship()
 
 
 class SchedulerJob(Base):
