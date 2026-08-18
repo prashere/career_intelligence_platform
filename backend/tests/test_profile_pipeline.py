@@ -22,7 +22,7 @@ SAMPLE_FORM = {
     "target_countries_priority": ["Germany"],
     "target_fields": ["robotics", "computer vision", "HRI"],
     "developing_country_scholarships": True,
-    "search_sources": ["Scholars4Dev", "DAAD", "LinkedIn"],
+    "search_sources": ["Opportunity Desk", "ProFellow", "LinkedIn"],
     "target_universities": "TU Dresden, RWTH Aachen",
     "discovery_mode": "target_list",
     "open_to_relocation": True,
@@ -83,15 +83,15 @@ def test_prefill_includes_identity_and_sources():
     assert len(data["sources"]["aggregators"]) == 4
     assert "LinkedIn" in data["sources"]["manual_channels"]
     ids = [a["id"] for a in data["sources"]["aggregators"]]
-    assert "scholars4dev" in ids
-    assert "daad" in ids
+    assert "opportunitydesk" in ids
+    assert "profellow" in ids
 
 
 def test_select_aggregators_prefers_user_chips():
     scored = score_aggregators(SAMPLE_FORM)
     top_ids = [s["id"] for s in scored[:4]]
-    assert "scholars4dev" in top_ids
-    assert "daad" in top_ids
+    assert "opportunitydesk" in top_ids
+    assert "profellow" in top_ids
 
 
 def test_fellowship_scoring_boosts_profellow():
@@ -114,6 +114,23 @@ def test_merge_prefill_and_extraction():
     assert profile.preferences.discovery_mode.value == "target_list"
 
 
+def test_normalize_extraction_coerces_string_list_items():
+    from app.services.profile_pipeline import normalize_extraction_output
+
+    raw = {
+        "experiences": ["Research intern at AI Lab"],
+        "awards": ["Dean's List 2024"],
+        "certifications": ["IELTS 8.0"],
+        "skills": ["Python", "PyTorch"],
+        "search_keywords": ["phd", "robotics"],
+        "extraction_meta": {"confidence": "medium", "fields_needing_review": []},
+    }
+    out = normalize_extraction_output(raw)
+    assert out["awards"][0]["title"] == "Dean's List 2024"
+    assert out["certifications"][0]["name"] == "IELTS 8.0"
+    assert out["experiences"][0]["role"] == "Research intern at AI Lab"
+
+
 def test_compile_profile_writes_l3_artifacts(tmp_path, monkeypatch):
     from app.services import profile_pipeline as pipeline
 
@@ -131,8 +148,8 @@ def test_compile_profile_writes_l3_artifacts(tmp_path, monkeypatch):
     paths = compile_profile(profile)
 
     ing = (out_dir / "ingestion_sources.json").read_text(encoding="utf-8")
-    assert "scholars4dev" in ing
-    assert "LinkedIn" in ing
+    assert "opportunitydesk" in ing
+    assert "profellow" in ing
 
     fc = __import__("json").loads((out_dir / "filter_config.json").read_text(encoding="utf-8"))
     assert fc["discovery_mode"] == "target_list"

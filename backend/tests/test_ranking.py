@@ -1,4 +1,9 @@
-from app.services.ranking import cosine_similarity, fit_level_from_score, urgency_score
+from app.services.ranking import (
+    build_score_breakdown,
+    cosine_similarity,
+    fit_level_from_score,
+    urgency_score,
+)
 from app.models import FitLevel
 from datetime import datetime, timedelta, timezone
 
@@ -19,3 +24,12 @@ def test_urgency_score():
     soon = datetime.now(timezone.utc) + timedelta(days=3)
     assert urgency_score(soon) == 1.0
     assert urgency_score(None) == 0.2
+
+
+def test_build_score_breakdown():
+    bd = build_score_breakdown(0.6, 0.7, 0.8, 0.65, 0.62, semantic_degraded=True)
+    assert bd["semantic"] == 0.6
+    assert bd["affinity"] == 0.65
+    assert bd["semantic_degraded"] is True
+    assert bd["weights"]["semantic"] == 0.45
+    assert bd["weights"]["affinity"] == 0.10
