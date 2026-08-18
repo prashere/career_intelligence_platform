@@ -11,6 +11,15 @@ python scripts/<script>.py
 
 ---
 
+## Pipeline documentation
+
+Locked reference docs (submit → 100%):
+
+- [Profile setup pipeline](../../docs/profile-setup-pipeline.md) — intake form, CV extraction LLM, merge, compile, activate
+- [Ingestion pipeline](../../docs/ingestion-pipeline.md) — source fetch, relevance gate, ranking after activate
+
+---
+
 ## Profile pipeline
 
 | Script | What it does | How to run |
@@ -31,6 +40,7 @@ python scripts/<script>.py
 | `list_source_registry.py` | Prints aggregators from `config/sources/source-registry.yaml`. With `--validate`, checks required fields and `parser_config` blocks. | `python scripts/list_source_registry.py` or `python scripts/list_source_registry.py --validate` |
 | `validate_discover_strategies.py` | Live-probes discover strategies for every registry aggregator (or one). Reports pass/fail, winning strategy, and sample URLs. | `python scripts/validate_discover_strategies.py --timeout 90` or `python scripts/validate_discover_strategies.py --aggregator bigfuture --include-browser` |
 | `seed_sources_from_profile.py` | Seeds `opportunity_sources` in the DB from compiled `ingestion_sources.json`, enriched from the registry. | `python scripts/seed_sources_from_profile.py` or `python scripts/seed_sources_from_profile.py path/to/ingestion_sources.json` |
+| `cleanup_pipeline_data.py` | Wipes profile, ingestion, and opportunity DB rows; keeps `users` and `scheduler_jobs`. Registry YAML on disk is untouched. | `python scripts/cleanup_pipeline_data.py` (dry-run) · `python scripts/cleanup_pipeline_data.py --execute --flush-redis` |
 | `run_ingestion_e2e.py` | End-to-end test: seeds from registry if empty, syncs envelope, runs all active sources, prints JSON summary. | `python scripts/run_ingestion_e2e.py` or `python scripts/run_ingestion_e2e.py --include-browser --max-items 15` |
 
 ---
@@ -55,4 +65,5 @@ The gate scores discovered items into `admit` / `investigate` / `reject`. Tune i
 | `seed.py` | Seeds demo users, communities, opportunities, and sample ingestion data for local development. | `python scripts/seed.py` |
 | `promote_admin.py` | Sets an existing user's role to administrator. | `python scripts/promote_admin.py admin@localhost` |
 | `test_groq.py` | Verifies `GROQ_API_KEY` and runs a sample chat (optional `--stream`). Run from platform root so `.env` is found. | `cd .. && python backend/scripts/test_groq.py` |
+| `test_langsmith.py` | Verifies LangSmith tracing config and sends a traced test chat. | `cd .. && python backend/scripts/test_langsmith.py` |
 | `bootstrap_backend.ps1` | Installs Python dependencies and Playwright Chromium on Windows (PowerShell). | `.\scripts\bootstrap_backend.ps1` from `backend/` |

@@ -11,7 +11,7 @@ Setup:
 
 Optional:
        python scripts/test_groq.py --stream
-       python scripts/test_groq.py --model llama-3.3-70b-versatile
+       python scripts/test_groq.py --model openai/gpt-oss-20b
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from openai import AsyncOpenAI
 
 from app.config import settings
-from app.services.llm import active_provider, chat_completion, get_chat_model
+from app.services.llm import active_provider, chat_completion_text as chat_completion, get_chat_model
 
 
 def _check_env() -> None:
