@@ -20,6 +20,7 @@ from app.schemas import (
     OpportunityResponse,
     WeeklyFocusResponse,
 )
+from app.services.affinity import append_status_history
 from app.services.ranking import days_until, urgency_label
 
 
@@ -46,6 +47,9 @@ def _to_response(opp: Opportunity, uo: Optional[UserOpportunity] = None) -> Oppo
         fit_score=uo.fit_score if uo else None,
         fit_level=uo.fit_level.value if uo and uo.fit_level else None,
         fit_explanation=uo.fit_explanation if uo else None,
+        score_breakdown=uo.score_breakdown if uo else None,
+        verification_status=opp.verification_status,
+        verified_at=opp.verified_at,
         days_until_deadline=d,
         urgency_label=urgency_label(d),
     )
@@ -61,13 +65,20 @@ async def get_feed(
     *,
     apply_eligibility: bool = True,
 ) -> FeedResponse:
-    from app.ingestion.eligibility import load_eligibility_rules, passes_eligibility
+    from app.ingestion.eligibility import load_eligibility_rules_for_user, passes_eligibility
 
     query = (
         select(Opportunity, UserOpportunity)
         .outerjoin(
             UserOpportunity,
             (UserOpportunity.opportunity_id == Opportunity.id) & (UserOpportunity.user_id == user_id),
+        )
+        .where(
+            Opportunity.duplicate_of.is_(None),
+            or_(
+                Opportunity.verification_status.is_(None),
+                Opportunity.verification_status != "stale",
+            ),
         )
         .order_by(UserOpportunity.fit_score.desc().nullslast(), Opportunity.created_at.desc())
     )
@@ -92,9 +103,10 @@ async def get_feed(
 
     result = await session.execute(query)
     rows = result.all()
-    eligibility_rules = load_eligibility_rules() if apply_eligibility else {}
-
     profile = await session.get(UserProfile, user_id) if apply_eligibility else None
+    eligibility_rules: dict = {}
+    if apply_eligibility and profile:
+        eligibility_rules = await load_eligibility_rules_for_user(session, profile.user_id)
 
     scholarships, fellowships, other = [], [], []
     now = datetime.now(timezone.utc)
@@ -105,13 +117,19 @@ async def get_feed(
     deadlines_week = 0
 
     for opp, uo in rows:
+        if opp.deadline and opp.deadline.replace(tzinfo=timezone.utc) < now:
+            continue
         if apply_eligibility and eligibility_rules and not passes_eligibility(opp, eligibility_rules, profile):
             continue
         resp = _to_response(opp, uo)
         if opp.created_at and opp.created_at >= tuesday:
             new_since += 1
-        if opp.deadline and opp.deadline <= week_ahead:
-            deadlines_week += 1
+        if opp.deadline:
+            deadline = opp.deadline
+            if deadline.tzinfo is None:
+                deadline = deadline.replace(tzinfo=timezone.utc)
+            if deadline <= week_ahead:
+                deadlines_week += 1
 
         if opp.opportunity_type == OpportunityType.scholarship:
             scholarships.append(resp)
@@ -121,7 +139,13 @@ async def get_feed(
             other.append(resp)
 
     prep_due = await session.execute(
-        select(Requirement).where(Requirement.is_completed.is_(False), Requirement.due_date <= week_ahead)
+        select(Requirement)
+        .join(UserOpportunity, Requirement.user_opportunity_id == UserOpportunity.id)
+        .where(
+            UserOpportunity.user_id == user_id,
+            Requirement.is_completed.is_(False),
+            Requirement.due_date <= week_ahead,
+        )
     )
 
     return FeedResponse(
@@ -171,11 +195,19 @@ async def update_user_opportunity(
         uo = UserOpportunity(user_id=user_id, opportunity_id=opportunity_id)
         session.add(uo)
     if status:
-        uo.status = UserOpportunityStatus(status)
+        new_status = UserOpportunityStatus(status)
+        append_status_history(uo, new_status)
+        uo.status = new_status
     if notes is not None:
         uo.notes = notes
     await session.commit()
     await session.refresh(uo)
+
+    if status:
+        from app.services.ranking import rank_opportunities_for_user
+
+        await rank_opportunities_for_user(session, user_id)
+
     return uo
 
 
