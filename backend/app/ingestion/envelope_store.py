@@ -32,11 +32,24 @@ async def get_platform_envelope(session: AsyncSession) -> dict:
     return env
 
 
-async def sync_platform_envelope(session: AsyncSession, envelope: dict) -> None:
+async def get_user_envelope(session: AsyncSession, user_id: str) -> dict | None:
+    """Per-user filter envelope from compiled artifacts (preferred for profile ingest)."""
+    from app.services.profile_storage import load_artifacts
+
+    artifacts = await load_artifacts(session, user_id)
+    if artifacts and artifacts.filter_config:
+        return artifacts.filter_config
+    return None
+
+
+async def sync_platform_envelope(session: AsyncSession, envelope: dict, *, commit: bool = True) -> None:
     result = await session.execute(select(PlatformSettings).where(PlatformSettings.key == ENVELOPE_KEY))
     row = result.scalar_one_or_none()
     if row:
         row.value = envelope
     else:
         session.add(PlatformSettings(key=ENVELOPE_KEY, value=envelope))
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
