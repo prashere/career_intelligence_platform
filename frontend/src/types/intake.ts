@@ -199,6 +199,32 @@ export interface IntakeValidateResult {
   confidence?: string;
 }
 
+export interface PipelineStepStatus {
+  name: string;
+  status: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error?: string | null;
+  logs?: string[];
+}
+
+export interface PipelineStatus {
+  id: string;
+  status: string;
+  current_step?: string | null;
+  steps: PipelineStepStatus[];
+  error?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
+export interface ProfileSummary {
+  full_name?: string | null;
+  discovery_mode?: string | null;
+  aggregator_names?: string[];
+  profile_truth_excerpt?: string | null;
+}
+
 export interface IntakeStatus {
   has_draft: boolean;
   current_step: number;
@@ -209,12 +235,23 @@ export interface IntakeStatus {
   has_compiled_artifacts?: boolean;
   has_profile_truth?: boolean;
   updated_at?: string;
+  pipeline?: PipelineStatus | null;
+  summary?: ProfileSummary | null;
 }
 
 export interface IntakeSubmitResult {
   ok: boolean;
   submission_id: string;
   saved_to: string;
+  pipeline_run_id?: string;
+  status?: string;
+}
+
+export interface StructuredProfileResponse {
+  profile: Record<string, unknown>;
+  profile_truth?: string | null;
+  confidence?: string | null;
+  fields_needing_review?: string[];
 }
 
 export function mergeForm(partial?: Partial<IntakeFormData>): IntakeFormData {

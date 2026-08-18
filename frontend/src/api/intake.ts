@@ -1,3 +1,4 @@
+import { getStoredToken } from '../auth/storage';
 import type {
   IntakeDraft,
   IntakeFormData,
@@ -5,13 +6,24 @@ import type {
   IntakeStatus,
   IntakeSubmitResult,
   IntakeValidateResult,
+  StructuredProfileResponse,
 } from '../types/intake';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...extra,
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: authHeaders(options?.headers as Record<string, string> | undefined),
     ...options,
   });
   if (!res.ok) {
@@ -44,10 +56,15 @@ export const intakeApi = {
     }),
 
   uploadCvFile: async (file: File) => {
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+
     const formData = new FormData();
     formData.append('file', file);
     const res = await fetch(`${API_BASE}/api/v1/profile/intake/cv/upload`, {
       method: 'POST',
+      headers,
       body: formData,
     });
     if (!res.ok) {
@@ -68,6 +85,18 @@ export const intakeApi = {
       method: 'POST',
       body: JSON.stringify({ step, form, cv_text }),
     }),
+
+  retryPipeline: () =>
+    request<IntakeSubmitResult>('/api/v1/profile/intake/pipeline/retry', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  deleteProfile: () =>
+    request<{ ok: boolean }>('/api/v1/profile/intake', { method: 'DELETE' }),
+
+  getStructuredProfile: () =>
+    request<StructuredProfileResponse>('/api/v1/profile/intake/structured'),
 
   generateExtractionPrompt: (step: number, form: Partial<IntakeFormData>, cv_text: string) =>
     request<IntakePromptResult>('/api/v1/profile/intake/prompts/extraction', {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { intakeApi } from '../api/intake';
 import { COUNTRIES, countryNameByCode } from '../data/countries';
@@ -42,7 +42,6 @@ import {
   FIELD_SUGGESTIONS,
   FORM_STEPS,
   IntakeFormData,
-  IntakeSubmitResult,
   REGION_OPTIONS,
   chipsToInput,
   collapseFundingRequirement,
@@ -63,6 +62,7 @@ function setField<K extends keyof IntakeFormData>(
 
 export default function ProfileIntake() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { push: toast } = useToast();
   const nameId = useFieldId('name');
   const emailId = useFieldId('email');
@@ -81,7 +81,6 @@ export default function ProfileIntake() {
   const [fieldsInput, setFieldsInput] = useState('');
   const [regionsInput, setRegionsInput] = useState('');
   const [countriesInput, setCountriesInput] = useState('');
-  const [submitted, setSubmitted] = useState<IntakeSubmitResult | null>(null);
 
   useEffect(() => {
     if (draft?.form && Object.keys(draft.form).length > 0) {
@@ -114,6 +113,31 @@ export default function ProfileIntake() {
     [withChips],
   );
 
+  const { data: intakeStatus } = useQuery({
+    queryKey: ['intake-status'],
+    queryFn: intakeApi.status,
+  });
+
+  const hasExistingProfile =
+    intakeStatus?.has_structured_profile || intakeStatus?.has_form_answers;
+
+  const deleteMutation = useMutation({
+    mutationFn: intakeApi.deleteProfile,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['intake-draft'] });
+      queryClient.invalidateQueries({ queryKey: ['intake-status'] });
+      setForm(DEFAULT_INTAKE_FORM);
+      setCvText('');
+      setCvFilename(null);
+      setFieldsInput('');
+      setRegionsInput('');
+      setCountriesInput('');
+      setStep(0);
+      toast('Profile deleted — you can start fresh', 'success');
+    },
+    onError: (err: Error) => toast(err.message, 'error'),
+  });
+
   const saveDraftMutation = useMutation({
     mutationFn: ({ s, f, cv }: { s: number; f: IntakeFormData; cv: string }) =>
       intakeApi.saveDraft(s, toPayload(f), cv),
@@ -123,10 +147,10 @@ export default function ProfileIntake() {
   const submitMutation = useMutation({
     mutationFn: ({ s, f, cv }: { s: number; f: IntakeFormData; cv: string }) =>
       intakeApi.submit(s, toPayload(f), cv),
-    onSuccess: (result) => {
-      setSubmitted(result);
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['intake-status'] });
-      toast('Profile submitted successfully', 'success');
+      toast('Profile submitted — processing started', 'success');
+      navigate('/profile');
     },
     onError: (err: Error) => toast(err.message, 'error'),
   });
@@ -293,30 +317,6 @@ export default function ProfileIntake() {
     );
   }
 
-  if (submitted) {
-    return (
-      <div className="intake-success">
-        <div className="success-card">
-          <div className="success-icon" aria-hidden>✓</div>
-          <h2>Profile submitted</h2>
-          <p>Your answers and CV are saved. Check your profile page for next steps.</p>
-          <dl className="success-meta">
-            <div>
-              <dt>Reference</dt>
-              <dd><code>{submitted.submission_id}</code></dd>
-            </div>
-          </dl>
-          <div className="success-actions">
-            <Link to="/profile"><Button variant="gold">View profile status</Button></Link>
-            <Button variant="ghost" onClick={() => { setSubmitted(null); setStep(0); }}>
-              Edit answers
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
       <PageHeader
@@ -324,9 +324,40 @@ export default function ProfileIntake() {
         title={FORM_STEPS[step]?.label ?? 'Setup'}
         lead="Six short sections, about 10 minutes. Tell us about yourself, we'll match you to funded opportunities."
         actions={
-          <Link to="/profile">
-            <Button variant="ghost">Back to profile</Button>
-          </Link>
+          <div className="page-header-actions">
+            {hasExistingProfile && (
+              <button
+                type="button"
+                className="btn-icon-delete"
+                aria-label="Delete profile and start over"
+                title="Delete profile and start over"
+                disabled={deleteMutation.isPending}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Delete your profile and all saved answers? You can fill out a new setup from scratch.',
+                    )
+                  ) {
+                    deleteMutation.mutate();
+                  }
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path
+                    d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+            <Link to="/profile">
+              <Button variant="ghost">Back to profile</Button>
+            </Link>
+          </div>
         }
       />
 
