@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ScheduleKind, SchedulerCategory, SchedulerJob
@@ -73,19 +73,48 @@ DEFAULT_SCHEDULER_JOBS: list[dict] = [
         "is_enabled": True,
         "category": SchedulerCategory.rank,
     },
+    {
+        "key": "source-health-hourly",
+        "name": "Source health check",
+        "description": "Auto-deactivate sources that exceeded consecutive failure threshold.",
+        "task_path": "app.workers.ingest.tasks.source_health_check_task",
+        "schedule_kind": ScheduleKind.cron,
+        "cron_minute": "30",
+        "cron_hour": "*",
+        "cron_day_of_week": "*",
+        "interval_seconds": None,
+        "is_enabled": True,
+        "category": SchedulerCategory.ingest,
+    },
+    {
+        "key": "staleness-check-weekly",
+        "name": "Staleness check",
+        "description": "Re-fetch opportunity pages and mark stale listings.",
+        "task_path": "app.workers.ingest.tasks.staleness_check_task",
+        "schedule_kind": ScheduleKind.cron,
+        "cron_minute": "0",
+        "cron_hour": "3",
+        "cron_day_of_week": "0",
+        "interval_seconds": None,
+        "is_enabled": True,
+        "category": SchedulerCategory.ingest,
+    },
 ]
 
 
 async def seed_scheduler_jobs(session: AsyncSession) -> int:
-    """Insert default scheduler rows when the table is empty. Returns rows added."""
-    count_result = await session.execute(select(func.count()).select_from(SchedulerJob))
-    if count_result.scalar_one() > 0:
-        return 0
-
+    """Insert default scheduler rows and sync any missing job definitions."""
+    added = 0
     for spec in DEFAULT_SCHEDULER_JOBS:
-        session.add(SchedulerJob(**spec))
-    await session.commit()
-    return len(DEFAULT_SCHEDULER_JOBS)
+        result = await session.execute(
+            select(SchedulerJob).where(SchedulerJob.key == spec["key"])
+        )
+        if result.scalar_one_or_none() is None:
+            session.add(SchedulerJob(**spec))
+            added += 1
+    if added:
+        await session.commit()
+    return added
 
 
 def build_celery_schedule_entry(job: SchedulerJob) -> dict:

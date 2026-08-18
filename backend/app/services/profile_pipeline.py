@@ -35,14 +35,13 @@ from app.source_registry_paths import SOURCE_REGISTRY_PATH
 INGESTABLE_SOURCE_TYPES = frozenset({"rss", "html"})
 
 SEARCH_CHIP_TO_REGISTRY: dict[str, str | None] = {
-    "Scholars4Dev": "scholars4dev",
-    "DAAD": "daad",
-    "ProFellow": "profellow",
-    "Opportunity Desk": "opportunity_desk",
-    "FundsForNGOs": "fundsforngos",
-    "Mladiinfo": "mladiinfo",
+    "Opportunity Desk": "opportunitydesk",
     "YouthOp": "youthop",
-    "ScholarshipTab": "scholarshiptab",
+    "Scholarships360": "scholarships360",
+    "BigFuture": "bigfuture",
+    "ScholarPositions": "scholarpositions",
+    "Opportunities Corners": "opportunitiescorners",
+    "ProFellow": "profellow",
     "University websites": None,
     "LinkedIn": None,
     "FindAPhD / MastersPortal": None,
@@ -258,8 +257,14 @@ def _other_languages(form: dict[str, Any]) -> list[str]:
     return [str(v) for v in langs if str(v).strip()]
 
 
-def score_aggregators(form: dict[str, Any], registry: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+def score_aggregators(
+    form: dict[str, Any],
+    registry: dict[str, Any] | None = None,
+    source_outcomes: dict[str, dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """Score registry entries; return sorted list with scores and reasons."""
+    from app.services.source_outcomes import outcome_bonus_for_scoring
+
     registry = registry or load_source_registry()
     target_degree = form.get("target_degree", "MSc")
     regions = [str(r) for r in (form.get("target_regions") or [])]
@@ -311,6 +316,12 @@ def score_aggregators(form: dict[str, Any], registry: dict[str, Any] | None = No
         if entry.get("funding_signal") == "high":
             score += 3
 
+        outcomes = (source_outcomes or {}).get(entry_id)
+        if outcomes:
+            bonus, outcome_reasons = outcome_bonus_for_scoring(outcomes)
+            score += bonus
+            reasons.extend(outcome_reasons)
+
         tags = [str(t).lower() for t in (entry.get("tags") or [])]
         if target_degree == "Fellowship" and "fellowship" in tags:
             score += 8
@@ -342,10 +353,11 @@ def select_aggregators(
     form: dict[str, Any],
     count: int | None = None,
     registry: dict[str, Any] | None = None,
+    source_outcomes: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     registry = registry or load_source_registry()
     n = count or int(registry.get("default_selection_count", 4))
-    scored = score_aggregators(form, registry)
+    scored = score_aggregators(form, registry, source_outcomes=source_outcomes)
     selected = scored[:n]
     return [
         {
@@ -359,7 +371,10 @@ def select_aggregators(
     ]
 
 
-def prefill_from_form(form: dict[str, Any]) -> dict[str, Any]:
+def prefill_from_form(
+    form: dict[str, Any],
+    source_outcomes: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Build partial L2 profile from form fields — no LLM, no CV parsing."""
     nationality = form.get("nationality_code") or form.get("nationality", "")
     current = form.get("current_country_code") or form.get("current_country")
@@ -379,7 +394,7 @@ def prefill_from_form(form: dict[str, Any]) -> dict[str, Any]:
         for idx, name in enumerate(flagship[:2])
     ]
 
-    aggregators = select_aggregators(form)
+    aggregators = select_aggregators(form, source_outcomes=source_outcomes)
     discovery = _discovery_mode(form)
     manual = _manual_channels(form)
 
@@ -506,6 +521,35 @@ def _strip_json_fences(text: str) -> str:
     return stripped
 
 
+def _coerce_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        return [part.strip() for part in re.split(r"[,;\n]", value) if part.strip()]
+    return [value]
+
+
+def _coerce_record(item: Any, *, text_key: str) -> dict[str, Any]:
+    if isinstance(item, dict):
+        return dict(item)
+    if isinstance(item, str):
+        text = item.strip()
+        return {text_key: text} if text else {}
+    return {text_key: str(item)}
+
+
+def _coerce_text_list(value: Any) -> list[str]:
+    items: list[str] = []
+    for entry in _coerce_list(value):
+        if isinstance(entry, str) and entry.strip():
+            items.append(entry.strip())
+        elif entry is not None:
+            items.append(str(entry))
+    return items
+
+
 def load_extraction_json(path: Path) -> dict[str, Any]:
     raw = path.read_text(encoding="utf-8-sig").strip()
     if not raw:
@@ -518,22 +562,23 @@ def normalize_extraction_output(extraction: dict[str, Any]) -> dict[str, Any]:
     data = deepcopy(extraction)
 
     normalized_experiences: list[dict[str, Any]] = []
-    for exp in data.get("experiences") or []:
-        role = exp.get("role") or exp.get("title") or "Unknown role"
-        org = exp.get("organization") or exp.get("company") or "Unknown organization"
-        highlights = list(exp.get("highlights") or [])[:4]
+    for exp in _coerce_list(data.get("experiences")):
+        row = _coerce_record(exp, text_key="role")
+        role = row.get("role") or row.get("title") or "Unknown role"
+        org = row.get("organization") or row.get("company") or "Unknown organization"
+        highlights = _coerce_text_list(row.get("highlights"))[:4]
         research_hints = ("research", "teaching assistant", "fellow", "publication", "r&d")
         role_org = f"{role} {org}".lower()
         normalized_experiences.append(
             {
                 "role": role,
                 "organization": org,
-                "location": exp.get("location"),
-                "start_date": exp.get("start_date"),
-                "end_date": exp.get("end_date"),
+                "location": row.get("location"),
+                "start_date": row.get("start_date"),
+                "end_date": row.get("end_date"),
                 "highlights": highlights,
-                "is_technical": exp.get("is_technical", True),
-                "is_research": exp.get(
+                "is_technical": row.get("is_technical", True),
+                "is_research": row.get(
                     "is_research",
                     any(h in role_org for h in research_hints),
                 ),
@@ -542,44 +587,46 @@ def normalize_extraction_output(extraction: dict[str, Any]) -> dict[str, Any]:
     data["experiences"] = normalized_experiences
 
     normalized_publications: list[dict[str, Any]] = []
-    for pub in data.get("publications") or []:
+    for pub in _coerce_list(data.get("publications")):
+        row = _coerce_record(pub, text_key="title")
         venue_parts = [
-            str(pub.get("venue") or ""),
-            str(pub.get("publisher") or ""),
-            str(pub.get("location") or ""),
+            str(row.get("venue") or ""),
+            str(row.get("publisher") or ""),
+            str(row.get("location") or ""),
         ]
         venue = ", ".join(p for p in venue_parts if p) or None
-        doi = pub.get("doi")
+        doi = row.get("doi")
         if isinstance(doi, str) and doi.startswith("http"):
             url = doi
             doi = doi.rsplit("/", 1)[-1] if "/" in doi else doi
         else:
-            url = pub.get("url")
+            url = row.get("url")
         normalized_publications.append(
             {
-                "title": pub.get("title", ""),
+                "title": row.get("title", ""),
                 "venue": venue,
-                "year": pub.get("year") or _parse_year(pub.get("date")),
+                "year": row.get("year") or _parse_year(row.get("date")),
                 "doi": doi,
                 "url": url,
-                "summary": pub.get("summary"),
-                "is_peer_reviewed": pub.get(
+                "summary": row.get("summary"),
+                "is_peer_reviewed": row.get(
                     "is_peer_reviewed",
-                    pub.get("type") == "conference_paper" or bool(pub.get("publisher")),
+                    row.get("type") == "conference_paper" or bool(row.get("publisher")),
                 ),
             }
         )
     data["publications"] = normalized_publications
 
     normalized_projects: list[dict[str, Any]] = []
-    for proj in data.get("projects") or []:
+    for proj in _coerce_list(data.get("projects")):
+        row = _coerce_record(proj, text_key="name")
         normalized_projects.append(
             {
-                "name": proj.get("name", ""),
-                "description": proj.get("description"),
-                "url": proj.get("url"),
-                "tags": list(proj.get("tags") or []),
-                "is_flagship": bool(proj.get("is_flagship")),
+                "name": row.get("name", ""),
+                "description": row.get("description"),
+                "url": row.get("url"),
+                "tags": _coerce_text_list(row.get("tags")),
+                "is_flagship": bool(row.get("is_flagship")),
             }
         )
     data["projects"] = normalized_projects
@@ -595,24 +642,26 @@ def normalize_extraction_output(extraction: dict[str, Any]) -> dict[str, Any]:
         data["skills"] = [str(s) for s in skills if s]
 
     normalized_awards: list[dict[str, Any]] = []
-    for award in data.get("awards") or []:
+    for award in _coerce_list(data.get("awards")):
+        row = _coerce_record(award, text_key="title")
         normalized_awards.append(
             {
-                "title": award.get("title") or award.get("name") or "",
-                "year": award.get("year") or _parse_year(award.get("date")),
-                "issuer": award.get("issuer"),
+                "title": row.get("title") or row.get("name") or "",
+                "year": row.get("year") or _parse_year(row.get("date")),
+                "issuer": row.get("issuer"),
             }
         )
     data["awards"] = normalized_awards
 
     normalized_certs: list[dict[str, Any]] = []
-    for cert in data.get("certifications") or []:
-        notes = cert.get("notes")
+    for cert in _coerce_list(data.get("certifications")):
+        row = _coerce_record(cert, text_key="name")
+        notes = row.get("notes")
         normalized_certs.append(
             {
-                "name": cert.get("name", ""),
-                "issuer": cert.get("issuer"),
-                "year": cert.get("year") or _parse_year(cert.get("date")),
+                "name": row.get("name", ""),
+                "issuer": row.get("issuer"),
+                "year": row.get("year") or _parse_year(row.get("date")),
             }
         )
         if notes and normalized_certs:
@@ -623,24 +672,33 @@ def normalize_extraction_output(extraction: dict[str, Any]) -> dict[str, Any]:
     data["certifications"] = normalized_certs
 
     normalized_edu: list[dict[str, Any]] = []
-    for edu in data.get("education") or []:
+    for edu in _coerce_list(data.get("education")):
+        row = _coerce_record(edu, text_key="institution")
         normalized_edu.append(
             {
-                "degree_level": edu.get("degree_level") or "Other",
-                "field": edu.get("field") or "General",
-                "institution": edu.get("institution", ""),
-                "location": edu.get("location"),
-                "graduation_date": edu.get("graduation_date"),
-                "gpa_value": edu.get("gpa_value"),
-                "gpa_scale": edu.get("gpa_scale"),
-                "honors": edu.get("honors"),
-                "is_highest": bool(edu.get("is_highest")),
+                "degree_level": row.get("degree_level") or "Other",
+                "field": row.get("field") or "General",
+                "institution": row.get("institution", ""),
+                "location": row.get("location"),
+                "graduation_date": row.get("graduation_date"),
+                "gpa_value": row.get("gpa_value"),
+                "gpa_scale": row.get("gpa_scale"),
+                "honors": row.get("honors"),
+                "is_highest": bool(row.get("is_highest")),
             }
         )
     data["education"] = normalized_edu
 
     if isinstance(data.get("connections"), str):
         data["connections"] = _connections_list({"connections": data["connections"]})
+    else:
+        data["connections"] = _coerce_text_list(data.get("connections"))
+
+    data["search_keywords"] = [
+        kw.lower()
+        for kw in _coerce_text_list(data.get("search_keywords"))
+        if kw
+    ]
 
     sources = data.get("sources") or {}
     if isinstance(sources, dict):
@@ -700,12 +758,9 @@ def merge_prefill_and_extraction(
 
 
 def build_cv_extraction_prompt(prefill: dict[str, Any], cv_text: str) -> str:
-    template = _extract_prompt_block("llm-cv-extraction-prompt.md")
-    prefill_json = json.dumps(prefill, indent=2, ensure_ascii=False)
-    return (
-        template.replace("{{PREFILL_JSON}}", prefill_json)
-        .replace("{{CV_TEXT}}", cv_text.strip())
-    )
+    from app.prompts.cv_extraction import build_cv_extraction_user_prompt
+
+    return build_cv_extraction_user_prompt(prefill, cv_text)
 
 
 def _degree_synonyms(degree: str) -> list[str]:
@@ -887,7 +942,11 @@ def _build_ingestion_sources(profile: StructuredProfile) -> dict[str, Any]:
 def _build_profile_truth(profile: StructuredProfile) -> str:
     prefs = profile.preferences
     identity = profile.identity
-    highest = next(e for e in profile.education if e.is_highest)
+    highest = next((e for e in profile.education if e.is_highest), None)
+    if highest is None and profile.education:
+        highest = profile.education[0]
+    if highest is None:
+        raise ValueError("Structured profile must include at least one education entry")
 
     constraints = [
         ("Target degree", prefs.target_degree.value),
@@ -992,6 +1051,23 @@ Which fully funded, research-aligned {prefs.target_degree.value} opportunities b
 """
 
 
+def compile_profile_artifacts(profile: StructuredProfile | dict[str, Any]) -> dict[str, Any]:
+    """Build L3 artifacts in memory (no filesystem writes)."""
+    if isinstance(profile, dict):
+        validated, errors = validate_structured_profile(profile)
+        if validated is None:
+            raise ValueError(f"Invalid structured profile: {'; '.join(errors)}")
+        profile = validated
+
+    return {
+        "filter_config": _build_filter_config(profile),
+        "eligibility_rules": _build_eligibility_rules(profile),
+        "ranking_config": _build_ranking_config(profile),
+        "ingestion_sources": _build_ingestion_sources(profile),
+        "profile_truth": _build_profile_truth(profile),
+    }
+
+
 def compile_profile(profile: StructuredProfile | dict[str, Any]) -> dict[str, Path]:
     if isinstance(profile, dict):
         validated, errors = validate_structured_profile(profile)
@@ -999,35 +1075,31 @@ def compile_profile(profile: StructuredProfile | dict[str, Any]) -> dict[str, Pa
             raise ValueError(f"Invalid structured profile: {'; '.join(errors)}")
         profile = validated
 
+    artifacts = compile_profile_artifacts(profile)
     out_dir = compiled_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     paths: dict[str, Path] = {}
 
-    fc = _build_filter_config(profile)
     fc_path = out_dir / "filter_config.json"
-    fc_path.write_text(json.dumps(fc, indent=2, ensure_ascii=False), encoding="utf-8")
+    fc_path.write_text(json.dumps(artifacts["filter_config"], indent=2, ensure_ascii=False), encoding="utf-8")
     paths["filter_config"] = fc_path
 
-    er = _build_eligibility_rules(profile)
     er_path = out_dir / "eligibility_rules.json"
-    er_path.write_text(json.dumps(er, indent=2, ensure_ascii=False), encoding="utf-8")
+    er_path.write_text(json.dumps(artifacts["eligibility_rules"], indent=2, ensure_ascii=False), encoding="utf-8")
     paths["eligibility_rules"] = er_path
 
-    rc = _build_ranking_config(profile)
     rc_path = out_dir / "ranking_config.json"
-    rc_path.write_text(json.dumps(rc, indent=2, ensure_ascii=False), encoding="utf-8")
+    rc_path.write_text(json.dumps(artifacts["ranking_config"], indent=2, ensure_ascii=False), encoding="utf-8")
     paths["ranking_config"] = rc_path
 
-    ing = _build_ingestion_sources(profile)
     ing_path = out_dir / "ingestion_sources.json"
-    ing_path.write_text(json.dumps(ing, indent=2, ensure_ascii=False), encoding="utf-8")
+    ing_path.write_text(json.dumps(artifacts["ingestion_sources"], indent=2, ensure_ascii=False), encoding="utf-8")
     paths["ingestion_sources"] = ing_path
 
-    truth = _build_profile_truth(profile)
     truth_path = _profile_truth_path()
     truth_path.parent.mkdir(parents=True, exist_ok=True)
-    truth_path.write_text(truth, encoding="utf-8")
+    truth_path.write_text(artifacts["profile_truth"], encoding="utf-8")
     paths["profile_truth"] = truth_path
 
     return paths

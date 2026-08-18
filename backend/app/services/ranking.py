@@ -1,11 +1,44 @@
-from datetime import datetime, timezone
-from typing import Optional
+"""Ranking service — composite fit scores for user opportunities."""
 
-from sqlalchemy import select
+import json
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.logging_config import get_logger
 from app.models import FitLevel, Opportunity, UserOpportunity, UserOpportunityStatus, UserProfile
+from app.services.affinity import (
+    AffinityProfile,
+    affinity_score,
+    build_affinity_profile,
+)
 from app.services.embeddings import embed_text
+from app.services.profile_intake import compiled_dir
+from app.services.profile_storage import load_ranking_config as load_ranking_config_db
+
+logger = get_logger(__name__)
+
+SEMANTIC_WEIGHT = 0.45
+ELIGIBILITY_WEIGHT = 0.30
+URGENCY_WEIGHT = 0.15
+AFFINITY_WEIGHT = 0.10
+
+
+def load_ranking_config() -> dict[str, Any]:
+    path = compiled_dir() / "ranking_config.json"
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return {
+        "discovery_mode": "open",
+        "university_match_weight": 0.2,
+        "region_match_weight": 0.1,
+        "interest_match_weight": 0.15,
+        "language_match_weight": 0.08,
+        "open_to_relocation": True,
+        "manual_channels": [],
+    }
 
 
 def urgency_score(deadline: Optional[datetime]) -> float:
@@ -26,13 +59,20 @@ def urgency_score(deadline: Optional[datetime]) -> float:
     return 0.3
 
 
-def eligibility_score(profile: UserProfile, opportunity: Opportunity) -> float:
+def eligibility_score(
+    profile: UserProfile,
+    opportunity: Opportunity,
+    ranking_cfg: dict[str, Any] | None = None,
+) -> float:
+    cfg = ranking_cfg or load_ranking_config()
     constraints = profile.constraints or {}
-    discovery_mode = constraints.get("discovery_mode", "open")
-    uni_weight = 0.35 if discovery_mode == "target_list" else 0.2
-    region_weight = 0.1
-    interest_weight = 0.15
-    language_weight = 0.08
+    discovery_mode = constraints.get("discovery_mode", cfg.get("discovery_mode", "open"))
+    uni_weight = float(cfg.get("university_match_weight", 0.2))
+    if discovery_mode == "target_list" and uni_weight < 0.35:
+        uni_weight = 0.35
+    region_weight = float(cfg.get("region_match_weight", 0.1))
+    interest_weight = float(cfg.get("interest_match_weight", 0.15))
+    language_weight = float(cfg.get("language_match_weight", 0.08))
 
     score = 0.5
     text = f"{opportunity.title} {opportunity.summary or ''} {opportunity.institution or ''}".lower()
@@ -59,7 +99,14 @@ def fit_level_from_score(score: float) -> FitLevel:
     return FitLevel.weak
 
 
-def build_explanation(profile: UserProfile, opportunity: Opportunity, semantic: float, eligibility: float) -> str:
+def build_explanation(
+    profile: UserProfile,
+    opportunity: Opportunity,
+    semantic: float,
+    eligibility: float,
+    *,
+    affinity: float = 0.5,
+) -> str:
     parts = []
     text = f"{opportunity.title} {opportunity.summary or ''}".lower()
     matched_interests = [i for i in (profile.research_interests or []) if i.lower() in text]
@@ -76,6 +123,11 @@ def build_explanation(profile: UserProfile, opportunity: Opportunity, semantic: 
     else:
         parts.append("relevant field, lower fit than top match")
 
+    if affinity >= 0.75:
+        parts.append("aligned with your saved interests")
+    elif affinity <= 0.35:
+        parts.append("similar to opportunities you archived")
+
     if opportunity.deadline:
         days = (opportunity.deadline.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).days
         if days <= 7:
@@ -84,10 +136,57 @@ def build_explanation(profile: UserProfile, opportunity: Opportunity, semantic: 
     return "; ".join(parts[:3])
 
 
-async def rank_opportunities_for_user(session: AsyncSession, user_id: str) -> int:
-    profile = await session.get(UserProfile, user_id)
+def build_score_breakdown(
+    semantic: float,
+    eligibility: float,
+    urgency: float,
+    affinity: float,
+    composite: float,
+    *,
+    semantic_degraded: bool = False,
+    expired: bool = False,
+) -> dict[str, Any]:
+    return {
+        "semantic": round(semantic, 4),
+        "eligibility": round(eligibility, 4),
+        "urgency": round(urgency, 4),
+        "affinity": round(affinity, 4),
+        "composite": round(composite, 4),
+        "weights": {
+            "semantic": SEMANTIC_WEIGHT,
+            "eligibility": ELIGIBILITY_WEIGHT,
+            "urgency": URGENCY_WEIGHT,
+            "affinity": AFFINITY_WEIGHT,
+        },
+        "semantic_degraded": semantic_degraded,
+        "expired": expired,
+    }
+
+
+def _is_expired(deadline: Optional[datetime], now: datetime) -> bool:
+    if not deadline:
+        return False
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    return (deadline - now).days < 0
+
+
+async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) -> int:
+    profile = await session.get(UserProfile, profile_id)
     if not profile:
         return 0
+
+    ranking_cfg = await load_ranking_config_db(session, profile.user_id)
+    now = datetime.now(timezone.utc)
+
+    uo_result = await session.execute(
+        select(UserOpportunity, Opportunity)
+        .join(Opportunity, UserOpportunity.opportunity_id == Opportunity.id)
+        .where(UserOpportunity.user_id == profile_id)
+    )
+    uo_rows = uo_result.all()
+    uo_by_opp_id = {opp.id: uo for uo, opp in uo_rows}
+    affinity_profile = build_affinity_profile(uo_rows)
 
     profile_text = " ".join(
         [
@@ -98,41 +197,86 @@ async def rank_opportunities_for_user(session: AsyncSession, user_id: str) -> in
         ]
     )
     profile_embedding = await embed_text(profile_text)
+    profile_embedding_missing = profile_embedding is None
     if profile_embedding:
         profile.embedding = profile_embedding
 
-    result = await session.execute(select(Opportunity))
-    opportunities = result.scalars().all()
-    scored: list[tuple[Opportunity, float, FitLevel, str]] = []
+    # Canonical opportunities only — duplicates sink to canonical via duplicate_of.
+    result = await session.execute(
+        select(Opportunity).where(
+            Opportunity.duplicate_of.is_(None),
+            or_(Opportunity.deadline.is_(None), Opportunity.deadline >= now),
+            or_(
+                Opportunity.verification_status.is_(None),
+                Opportunity.verification_status != "stale",
+            ),
+        )
+    )
+    active_opportunities = result.scalars().all()
 
-    for opp in opportunities:
+    expired_result = await session.execute(
+        select(Opportunity).where(
+            Opportunity.duplicate_of.is_(None),
+            Opportunity.deadline.isnot(None),
+            Opportunity.deadline < now,
+        )
+    )
+    expired_opportunities = expired_result.scalars().all()
+
+    scored: list[tuple[Opportunity, float, FitLevel, str, dict[str, Any]]] = []
+    embedding_calls = 0
+
+    for opp in active_opportunities:
+        semantic_degraded = False
         if not opp.embedding and (opp.summary or opp.title):
             opp.embedding = await embed_text(f"{opp.title}. {opp.summary or ''}")
+            if opp.embedding:
+                embedding_calls += 1
 
         semantic = 0.5
         if profile.embedding and opp.embedding:
             semantic = cosine_similarity(profile.embedding, opp.embedding)
+        elif profile_embedding_missing or not opp.embedding:
+            semantic_degraded = True
 
-        elig = eligibility_score(profile, opp)
+        elig = eligibility_score(profile, opp, ranking_cfg)
         urg = urgency_score(opp.deadline)
-        composite = semantic * 0.5 + elig * 0.35 + urg * 0.15
+        aff = affinity_score(opp, uo_by_opp_id.get(opp.id), affinity_profile)
+        composite = (
+            semantic * SEMANTIC_WEIGHT
+            + elig * ELIGIBILITY_WEIGHT
+            + urg * URGENCY_WEIGHT
+            + aff * AFFINITY_WEIGHT
+        )
         level = fit_level_from_score(composite)
-        explanation = build_explanation(profile, opp, semantic, elig)
-        scored.append((opp, composite, level, explanation))
+        explanation = build_explanation(profile, opp, semantic, elig, affinity=aff)
+        breakdown = build_score_breakdown(
+            semantic, elig, urg, aff, composite,
+            semantic_degraded=semantic_degraded,
+            expired=False,
+        )
+        scored.append((opp, composite, level, explanation, breakdown))
+
+    if profile_embedding_missing:
+        logger.warning(
+            "ranking_semantic_degraded",
+            profile_id=profile_id,
+            reason="profile_embedding_missing",
+        )
 
     scored.sort(key=lambda x: x[1], reverse=True)
 
-    for rank, (opp, composite, level, explanation) in enumerate(scored, start=1):
+    for rank, (opp, composite, level, explanation, breakdown) in enumerate(scored, start=1):
         existing = await session.execute(
             select(UserOpportunity).where(
-                UserOpportunity.user_id == user_id,
+                UserOpportunity.user_id == profile_id,
                 UserOpportunity.opportunity_id == opp.id,
             )
         )
         uo = existing.scalar_one_or_none()
         if not uo:
             uo = UserOpportunity(
-                user_id=user_id,
+                user_id=profile_id,
                 opportunity_id=opp.id,
                 status=UserOpportunityStatus.new,
             )
@@ -141,6 +285,32 @@ async def rank_opportunities_for_user(session: AsyncSession, user_id: str) -> in
         uo.fit_level = level
         uo.fit_explanation = explanation
         uo.rank_position = rank
+        uo.score_breakdown = breakdown
+
+    for opp in expired_opportunities:
+        existing = await session.execute(
+            select(UserOpportunity).where(
+                UserOpportunity.user_id == profile_id,
+                UserOpportunity.opportunity_id == opp.id,
+            )
+        )
+        uo = existing.scalar_one_or_none()
+        if not uo:
+            uo = UserOpportunity(
+                user_id=profile_id,
+                opportunity_id=opp.id,
+                status=UserOpportunityStatus.new,
+            )
+            session.add(uo)
+        uo.fit_score = 0.0
+        uo.fit_level = FitLevel.weak
+        uo.fit_explanation = "deadline has passed"
+        uo.rank_position = None
+        uo.score_breakdown = build_score_breakdown(
+            0.0, 0.0, 0.0, 0.0, 0.0,
+            semantic_degraded=profile_embedding_missing,
+            expired=True,
+        )
 
     await session.commit()
     return len(scored)

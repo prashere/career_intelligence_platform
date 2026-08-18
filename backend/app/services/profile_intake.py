@@ -272,9 +272,6 @@ def save_form_answers_markdown(form: dict[str, Any]) -> Path:
 def build_extraction_prompt(form: dict[str, Any], cv_text: str) -> str:
     template = _extract_prompt_block("llm-extraction-prompt.md")
     form_block = form_answers_to_markdown(form)
-    save_form_answers_markdown(form)
-    if cv_text.strip():
-        save_cv_text(cv_text)
     return (
         template.replace("{{FORM_ANSWERS}}", form_block).replace("{{CV_TEXT}}", cv_text.strip())
     )

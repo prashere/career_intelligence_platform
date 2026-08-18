@@ -18,11 +18,16 @@ def hash_url(url: str) -> str:
     return hashlib.sha256(url.strip().lower().encode("utf-8")).hexdigest()
 
 
-async def fetch_source(session: AsyncSession, source_id: str) -> dict[str, Any]:
+async def fetch_source(
+    session: AsyncSession,
+    source_id: str,
+    *,
+    interest_envelope: dict | None = None,
+) -> dict[str, Any]:
     """Run registry-driven ingestion pipeline for one source."""
     from app.ingestion.pipeline import run_source_ingestion
 
-    return await run_source_ingestion(session, source_id)
+    return await run_source_ingestion(session, source_id, interest_envelope=interest_envelope)
 
 
 async def normalize_raw_documents(session: AsyncSession, limit: int = 100) -> dict[str, Any]:

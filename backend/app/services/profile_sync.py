@@ -19,6 +19,7 @@ async def sync_user_profile_from_structured(
     *,
     user: User | None = None,
     profile: UserProfile | None = None,
+    commit: bool = True,
 ) -> UserProfile | None:
     """Update or create a user profile from structured-profile.json."""
     raw = data if data is not None else load_structured_profile()
@@ -36,10 +37,6 @@ async def sync_user_profile_from_structured(
         profile = result.scalar_one_or_none()
 
     if profile is None:
-        result = await session.execute(select(UserProfile).limit(1))
-        profile = result.scalar_one_or_none()
-
-    if not profile:
         if user is None:
             raise ValueError("No user profile to sync into — sign in or pass --email")
         profile = UserProfile(user_id=user.id, name=fields["name"])
@@ -48,8 +45,11 @@ async def sync_user_profile_from_structured(
     for key, value in fields.items():
         setattr(profile, key, value)
 
-    await session.commit()
-    await session.refresh(profile)
+    if commit:
+        await session.commit()
+        await session.refresh(profile)
+    else:
+        await session.flush()
     return profile
 
 
