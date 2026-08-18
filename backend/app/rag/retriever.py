@@ -121,7 +121,7 @@ async def answer_question(
             [],
         )
 
-    from app.services.embeddings import chat_completion
+    from app.services.embeddings import chat_completion_text as chat_completion
 
     system = (
         "You are a career intelligence assistant. Answer using ONLY the provided context. "
