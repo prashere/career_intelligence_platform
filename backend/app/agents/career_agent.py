@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import AgentThread, Opportunity, Requirement
 from app.rag.retriever import retrieve_context
 from app.services.email import send_email, web_search
-from app.services.embeddings import chat_completion
+from app.services.embeddings import chat_completion_text as chat_completion
+from app.telemetry.langsmith import traceable
 
 
 async def get_or_create_thread(
@@ -83,6 +84,7 @@ async def find_connections(profile_data: dict, context: str) -> list[str]:
     return connections
 
 
+@traceable(run_type="chain", name="career_agent", tags=["agent", "chat"])
 async def run_agent(
     session: AsyncSession,
     user_id: str,
