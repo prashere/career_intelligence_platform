@@ -29,6 +29,10 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     tavily_api_key: str = ""
+    gemini_api_key: str = ""
+    gemini_embedding_model: str = "text-embedding-004"
+    embedding_provider: str = ""  # openai | gemini | fastembed | empty = auto chain
+    fastembed_model: str = "BAAI/bge-small-en-v1.5"
 
     # LLM chat — Groq (free tier) or OpenAI. Embeddings remain on OpenAI until Gemini is wired.
     llm_provider: str = ""  # "groq" | "openai" | empty (auto: groq if GROQ_API_KEY set)
