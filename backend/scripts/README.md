@@ -57,6 +57,7 @@ The gate scores discovered items into `admit` / `investigate` / `reject`. Tune i
 | `smoke_playground.py` | Runs the Ingestion lab code path against one aggregator, including DB writes. Needs a database, so run it inside Docker. | `docker compose exec api python scripts/smoke_playground.py opportunitydesk --resolve` |
 
 | `score_distribution.py` | Histogram of composite scores, fit levels, degraded components, missing deadlines. | `python scripts/score_distribution.py` or `python scripts/score_distribution.py --user-email you@example.com` |
+| `show_card_reasons.py` | Prints the explanation payload the dashboard receives per card: fit level, percent, one-line summary, and every structured reason. Needs a database, so run it inside Docker. | `docker compose exec -e PYTHONPATH=/app api python scripts/show_card_reasons.py 5` |
 
 ---
 

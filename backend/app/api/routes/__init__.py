@@ -37,6 +37,7 @@ from app.schemas import (
     LearningItemResponse,
     LearningItemUpdate,
     NotificationResponse,
+    OpportunityListResponse,
     OpportunityResponse,
     OpportunitySourceCreate,
     OpportunitySourceResponse,
@@ -57,6 +58,7 @@ from app.services.opportunities import (
     get_opportunity_detail,
     get_or_create_application,
     get_weekly_focus,
+    list_opportunities,
     update_user_opportunity,
 )
 from app.services.ranking import rank_opportunities_for_user
@@ -87,6 +89,7 @@ async def feed(
     db: AsyncSession = Depends(get_db),
     profile: UserProfile = Depends(get_current_user_profile),
 ):
+    # Deprecated: use GET /opportunities for ranked paginated list.
     return await _safe_feed(
         db,
         profile.id,
@@ -95,6 +98,42 @@ async def feed(
         opportunity_type=opportunity_type,
         funding_type=funding_type,
     )
+
+
+@router.get("/opportunities", response_model=OpportunityListResponse)
+async def opportunities_list(
+    bucket: str = Query("matches"),
+    sort: str = Query("fit"),
+    verified_only: bool = Query(False),
+    search: str | None = Query(None),
+    opportunity_type: str | None = Query(None),
+    funding_type: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    cursor: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    allowed_buckets = {"matches", "closing_soon", "saved", "applied", "dismissed"}
+    if bucket not in allowed_buckets:
+        raise HTTPException(status_code=400, detail=f"Invalid bucket: {bucket}")
+    if sort not in ("fit", "deadline"):
+        raise HTTPException(status_code=400, detail=f"Invalid sort: {sort}")
+    try:
+        return await list_opportunities(
+            db,
+            profile.id,
+            bucket=bucket,
+            sort=sort,
+            verified_only=verified_only,
+            search=search,
+            opportunity_type=opportunity_type,
+            funding_type=funding_type,
+            limit=limit,
+            cursor=cursor,
+        )
+    except ProgrammingError:
+        await db.rollback()
+        return OpportunityListResponse(items=[], total=0, next_cursor=None)
 
 
 @router.get("/opportunities/{opportunity_id}", response_model=OpportunityResponse)

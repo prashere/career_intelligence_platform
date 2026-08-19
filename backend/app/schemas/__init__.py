@@ -50,12 +50,19 @@ class OpportunityResponse(BaseModel):
     fit_level: Optional[str] = None
     fit_explanation: Optional[str] = None
     score_breakdown: Optional[dict] = None
+    rank_position: Optional[int] = None
     verification_status: Optional[str] = None
     verified_at: Optional[datetime] = None
     days_until_deadline: Optional[int] = None
     urgency_label: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class OpportunityListResponse(BaseModel):
+    items: list[OpportunityResponse] = Field(default_factory=list)
+    total: int = 0
+    next_cursor: Optional[str] = None
 
 
 class FeedSummary(BaseModel):

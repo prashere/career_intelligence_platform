@@ -18,9 +18,11 @@ from app.services.eligibility_scoring import evaluate_eligibility
 from app.services.embeddings import (
     calibrate_cosine_similarity,
     cosine_similarity_vectors,
-    embed_text,
+    embed_text_with_provider,
     lexical_similarity,
+    matched_terms,
 )
+from app.services.opportunity_facts import apply_facts_to_opportunity, derive_facts
 from app.services.profile_intake import compiled_dir
 from app.services.profile_storage import load_eligibility_rules as load_eligibility_rules_db
 from app.services.profile_storage import load_ranking_config as load_ranking_config_db
@@ -82,42 +84,215 @@ def fit_level_from_score(score: float, *, hard_eligibility_failed: bool = False)
     return FitLevel.weak
 
 
-def build_explanation(
+NEUTRAL_FIT_REASON = "Not enough information to explain this match"
+
+
+def _reason(code: str, label: str, direction: str, weight: float, source: str) -> dict[str, Any]:
+    return {"code": code, "label": label, "direction": direction, "weight": weight, "source": source}
+
+
+def build_fit_reasons(
     profile: UserProfile,
     opportunity: Opportunity,
     semantic: float,
+    semantic_available: bool,
+    semantic_method: Optional[str],
     eligibility_eval: Any,
+    urgency_available: bool,
+    affinity: float,
     *,
-    affinity: float = 0.5,
-) -> str:
-    parts: list[str] = []
-    for reason in eligibility_eval.reasons:
-        if reason.direction == "positive":
-            parts.append(reason.label)
-        if len(parts) >= 2:
-            break
+    facts: Any = None,
+    evidence_terms: Optional[list[str]] = None,
+) -> tuple[list[dict[str, Any]], str, bool]:
+    """Ordered explainability reasons plus a one-line summary.
 
-    if semantic > 0.7:
-        parts.append("strong semantic alignment with your profile goals")
-    elif semantic > 0.45:
-        parts.append("relevant field, moderate semantic fit")
-    elif semantic > 0.0:
-        parts.append("lower semantic fit than top matches")
+    Reasons are layered so a card is never unexplained: profile matches first,
+    then listing facts, then honest statements about what the listing omits.
+    """
+    reasons: list[dict[str, Any]] = []
+    evidence_terms = evidence_terms or []
+
+    for er in eligibility_eval.reasons:
+        direction = "negative" if er.direction == "hard_fail" else er.direction
+        reasons.append(_reason(er.code, er.label, direction, er.weight, "eligibility"))
+
+    have_codes = {r["code"] for r in reasons}
+
+    # A configured boost phrase often restates a reason we already surfaced.
+    if "funding_full" in have_codes:
+        reasons = [
+            r
+            for r in reasons
+            if not (r["code"] == "boost_phrase" and "fund" in r["label"].lower())
+        ]
+        have_codes = {r["code"] for r in reasons}
+
+    # Semantic evidence — name the overlapping terms rather than quoting a score.
+    if semantic_available and semantic > 0:
+        term_suffix = f": {', '.join(evidence_terms[:3])}" if evidence_terms else ""
+        if semantic >= 0.55:
+            reasons.append(
+                _reason(
+                    "semantic_strong",
+                    f"Strong topical overlap with your profile{term_suffix}",
+                    "positive",
+                    round(semantic, 4),
+                    "semantic",
+                )
+            )
+        elif semantic >= 0.30:
+            reasons.append(
+                _reason(
+                    "semantic_moderate",
+                    f"Related to your stated interests{term_suffix}",
+                    "positive",
+                    round(semantic, 4),
+                    "semantic",
+                )
+            )
+        elif evidence_terms:
+            reasons.append(
+                _reason(
+                    "semantic_partial",
+                    f"Partial keyword overlap{term_suffix}",
+                    "neutral",
+                    round(semantic, 4),
+                    "semantic",
+                )
+            )
+        else:
+            reasons.append(
+                _reason(
+                    "semantic_weak",
+                    "None of your profile keywords appear in this listing",
+                    "negative",
+                    round(semantic, 4),
+                    "semantic",
+                )
+            )
+
+    # Listing facts — true regardless of profile, still useful context.
+    if facts is not None:
+        if facts.formats:
+            fmt = facts.formats[0]
+            article = "an" if fmt[0] in "aeiou" else "a"
+            reasons.append(_reason("format", f"Listed as {article} {fmt}", "neutral", 0.0, "listing"))
+        if facts.themes and "interest_match" not in have_codes:
+            reasons.append(
+                _reason(
+                    "theme",
+                    f"Focus areas: {', '.join(facts.themes[:3])}",
+                    "neutral",
+                    0.0,
+                    "listing",
+                )
+            )
+        if facts.remote is True:
+            reasons.append(_reason("remote", "Can be done remotely", "positive", 0.05, "listing"))
+
+    if opportunity.verification_status == "primary_confirmed":
+        reasons.append(
+            _reason("verified", "Confirmed against the official source page", "positive", 0.1, "verification")
+        )
 
     if affinity >= 0.75:
-        parts.append("aligned with your saved interests")
+        reasons.append(
+            _reason(
+                "affinity_positive",
+                "Similar to opportunities you saved or started",
+                "positive",
+                round(affinity, 4),
+                "affinity",
+            )
+        )
     elif affinity <= 0.35:
-        parts.append("similar to opportunities you archived")
+        reasons.append(
+            _reason(
+                "affinity_negative",
+                "Similar to opportunities you archived",
+                "negative",
+                round(affinity, 4),
+                "affinity",
+            )
+        )
 
-    if opportunity.deadline:
+    # Deadline: state the date, the rolling status, or the absence of one.
+    if urgency_available and opportunity.deadline:
         days = (opportunity.deadline.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).days
-        if days <= 7:
-            parts.append(f"deadline in {days} days")
+        if days <= 14:
+            reasons.append(
+                _reason(
+                    "urgency",
+                    f"Deadline in {days} day{'s' if days != 1 else ''}",
+                    "positive",
+                    1.0 if days <= 7 else 0.7,
+                    "urgency",
+                )
+            )
+        elif days <= 60:
+            reasons.append(
+                _reason("deadline_known", f"Applications close in {days} days", "neutral", 0.3, "urgency")
+            )
+    elif facts is not None and facts.deadline_note == "rolling":
+        reasons.append(
+            _reason("deadline_rolling", "Rolling deadline — apply any time", "neutral", 0.0, "urgency")
+        )
+    else:
+        reasons.append(
+            _reason(
+                "deadline_missing",
+                "No deadline published — ranked without urgency",
+                "negative",
+                0.0,
+                "urgency",
+            )
+        )
 
-    if eligibility_eval.hard_failed:
-        parts.append("hard eligibility mismatch — capped fit level")
+    # Degradation note is informational, never the whole story.
+    semantic_degraded = not semantic_available
+    if semantic_method == "lexical":
+        reasons.append(
+            _reason(
+                "semantic_keyword_only",
+                "Keyword matching used — semantic model not configured",
+                "neutral",
+                0.0,
+                "system",
+            )
+        )
+    elif semantic_degraded:
+        reasons.append(
+            _reason(
+                "semantic_unavailable",
+                "This listing has too little text to compare against your profile",
+                "negative",
+                0.0,
+                "system",
+            )
+        )
 
-    return "; ".join(parts[:4]) if parts else "Exploring fit based on available signals"
+    direction_rank = {"positive": 0, "negative": 1, "neutral": 2}
+    reasons.sort(key=lambda r: (direction_rank.get(r["direction"], 3), -(r.get("weight") or 0)))
+
+    # A card is unexplainable only when the listing carries no usable text at all.
+    substantive = [r for r in reasons if r["source"] != "system"]
+    hide_percent = len(substantive) == 0
+
+    positive_labels = [r["label"] for r in reasons if r["direction"] == "positive"]
+    neutral_labels = [r["label"] for r in reasons if r["direction"] == "neutral"]
+    urgency_labels = [r["label"] for r in reasons if r["code"] in ("urgency", "deadline_rolling")]
+
+    summary_parts = positive_labels[:2]
+    if not summary_parts:
+        summary_parts = neutral_labels[:2]
+    if urgency_labels and urgency_labels[0] not in summary_parts:
+        summary_parts.append(urgency_labels[0])
+
+    fit_reason = "; ".join(summary_parts) if summary_parts else NEUTRAL_FIT_REASON
+    if not summary_parts:
+        hide_percent = True
+
+    return reasons, fit_reason, hide_percent
 
 
 def compute_composite(
@@ -159,11 +334,17 @@ def build_score_breakdown(
     eligibility_reasons: list[dict[str, Any]],
     hard_eligibility_failed: bool = False,
     expired: bool = False,
+    reasons: list[dict[str, Any]] | None = None,
+    hide_match_percent: bool = False,
+    semantic_degraded: bool = False,
+    evidence_terms: list[str] | None = None,
+    derived_facts: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "semantic": round(semantic, 4),
         "semantic_raw": round(semantic_raw, 4) if semantic_raw is not None else None,
         "semantic_method": semantic_method,
+        "semantic_degraded": semantic_degraded,
         "eligibility": round(eligibility, 4),
         "urgency": round(urgency, 4),
         "affinity": round(affinity, 4),
@@ -177,6 +358,10 @@ def build_score_breakdown(
         "weights_applied": weights_applied,
         "components_available": components_available,
         "eligibility_reasons": eligibility_reasons,
+        "reasons": reasons or [],
+        "evidence_terms": evidence_terms or [],
+        "derived_facts": derived_facts or {},
+        "hide_match_percent": hide_match_percent,
         "hard_eligibility_failed": hard_eligibility_failed,
         "expired": expired,
     }
@@ -190,24 +375,33 @@ def _is_expired(deadline: Optional[datetime], now: datetime) -> bool:
     return (deadline - now).days < 0
 
 
+# opportunities.embedding is Vector(1536); local providers emit other sizes.
+STORED_EMBEDDING_DIMENSIONS = 1536
+
+
 async def _semantic_score(
     profile: UserProfile,
     opportunity: Opportunity,
     profile_text: str,
     profile_embedding: Optional[list[float]],
-) -> tuple[float, Optional[float], str, bool]:
+    provider_name: Optional[str] = None,
+) -> tuple[float, Optional[float], Optional[str], bool]:
     opp_text = f"{opportunity.title}. {opportunity.summary or ''}"
 
-    if profile_embedding and opportunity.embedding:
-        raw = cosine_similarity_vectors(profile_embedding, opportunity.embedding)
-        return calibrate_cosine_similarity(raw), raw, "cosine", True
+    if profile_embedding:
+        stored = opportunity.embedding
+        if stored and len(stored) == len(profile_embedding):
+            raw = cosine_similarity_vectors(profile_embedding, stored)
+            return calibrate_cosine_similarity(raw, provider_name), raw, "cosine", True
 
-    if profile_embedding and (opportunity.summary or opportunity.title):
-        opp_embedding = await embed_text(opp_text)
-        if opp_embedding:
-            opportunity.embedding = opp_embedding
-            raw = cosine_similarity_vectors(profile_embedding, opp_embedding)
-            return calibrate_cosine_similarity(raw), raw, "cosine", True
+        if opportunity.summary or opportunity.title:
+            opp_embedding, opp_provider = await embed_text_with_provider(opp_text)
+            if opp_embedding:
+                # Only persist when the vector matches the column width.
+                if len(opp_embedding) == STORED_EMBEDDING_DIMENSIONS:
+                    opportunity.embedding = opp_embedding
+                raw = cosine_similarity_vectors(profile_embedding, opp_embedding)
+                return calibrate_cosine_similarity(raw, opp_provider or provider_name), raw, "cosine", True
 
     if profile_text.strip() and opp_text.strip():
         raw_lex = lexical_similarity(profile_text, opp_text)
@@ -242,8 +436,17 @@ async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) ->
             " ".join(profile.target_universities or []),
         ]
     )
-    profile_embedding = await embed_text(profile_text)
-    if profile_embedding:
+    # Topical evidence only. Regions are excluded because they are already
+    # explained by the region_match reason and would otherwise crowd out the
+    # interest and skill matches that actually justify the score.
+    profile_terms = [
+        *(profile.research_interests or []),
+        *(profile.target_universities or []),
+        *(profile.skills or []),
+    ]
+
+    profile_embedding, provider_name = await embed_text_with_provider(profile_text)
+    if profile_embedding and len(profile_embedding) == STORED_EMBEDDING_DIMENSIONS:
         profile.embedding = profile_embedding
 
     result = await session.execute(
@@ -270,14 +473,23 @@ async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) ->
     scored: list[tuple[Opportunity, float, FitLevel, str, dict[str, Any]]] = []
     embedding_calls = 0
 
+    facts_backfilled = 0
+
     for opp in active_opportunities:
+        # Recover deadline/funding/degree/region facts the extractor left empty.
+        facts = derive_facts(opp)
+        if apply_facts_to_opportunity(opp, facts):
+            facts_backfilled += 1
+
         semantic, semantic_raw, semantic_method, semantic_available = await _semantic_score(
-            profile, opp, profile_text, profile_embedding
+            profile, opp, profile_text, profile_embedding, provider_name
         )
-        if semantic_method == "cosine" and not opp.embedding and opp.summary:
+        if semantic_method == "cosine":
             embedding_calls += 1
 
-        elig_eval = evaluate_eligibility(profile, opp, eligibility_rules, ranking_cfg)
+        evidence = matched_terms(profile_terms, f"{opp.title} {opp.summary or ''}")
+
+        elig_eval = evaluate_eligibility(profile, opp, eligibility_rules, ranking_cfg, facts=facts)
         elig = elig_eval.score
         urg = urgency_score(opp.deadline)
         urg_available = opp.deadline is not None
@@ -294,7 +506,19 @@ async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) ->
         components_available = list(weights_applied.keys())
 
         level = fit_level_from_score(composite, hard_eligibility_failed=elig_eval.hard_failed)
-        explanation = build_explanation(profile, opp, semantic, elig_eval, affinity=aff)
+        semantic_degraded = not semantic_available
+        fit_reasons, fit_reason, hide_percent = build_fit_reasons(
+            profile,
+            opp,
+            semantic,
+            semantic_available,
+            semantic_method,
+            elig_eval,
+            urg_available,
+            aff,
+            facts=facts,
+            evidence_terms=evidence,
+        )
         breakdown = build_score_breakdown(
             semantic,
             elig,
@@ -308,8 +532,13 @@ async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) ->
             eligibility_reasons=elig_eval.reason_dicts(),
             hard_eligibility_failed=elig_eval.hard_failed,
             expired=False,
+            reasons=fit_reasons,
+            hide_match_percent=hide_percent,
+            semantic_degraded=semantic_degraded,
+            evidence_terms=evidence,
+            derived_facts=facts.to_dict(),
         )
-        scored.append((opp, composite, level, explanation, breakdown))
+        scored.append((opp, composite, level, fit_reason, breakdown))
 
     if not profile_embedding and not profile_text.strip():
         logger.warning(
@@ -320,7 +549,7 @@ async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) ->
 
     scored.sort(key=lambda x: x[1], reverse=True)
 
-    for rank, (opp, composite, level, explanation, breakdown) in enumerate(scored, start=1):
+    for rank, (opp, composite, level, fit_reason, breakdown) in enumerate(scored, start=1):
         existing = await session.execute(
             select(UserOpportunity).where(
                 UserOpportunity.user_id == profile_id,
@@ -337,7 +566,7 @@ async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) ->
             session.add(uo)
         uo.fit_score = round(composite, 3)
         uo.fit_level = level
-        uo.fit_explanation = explanation
+        uo.fit_explanation = fit_reason
         uo.rank_position = rank
         uo.score_breakdown = breakdown
 
@@ -369,8 +598,20 @@ async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) ->
             components_available=[],
             weights_applied={},
             eligibility_reasons=[],
+            reasons=[
+                _reason("expired", "The application deadline has passed", "negative", 0.0, "urgency")
+            ],
+            hide_match_percent=True,
             expired=True,
         )
+
+    logger.info(
+        "ranking_completed",
+        profile_id=profile_id,
+        scored=len(scored),
+        embedding_calls=embedding_calls,
+        facts_backfilled=facts_backfilled,
+    )
 
     await session.commit()
     return len(scored)

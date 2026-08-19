@@ -49,7 +49,8 @@ async def _run_pipeline_test():
         async with async_session() as session:
             run = await run_profile_pipeline(session, run_id, user_id, sub_id)
 
-    assert run.status == ProfilePipelineRunStatus.completed
+    # The orchestrator hands off to ingest, which calls finalize_pipeline_run.
+    assert run.status == ProfilePipelineRunStatus.running
 
     async with async_session() as session:
         structured = await load_structured_profile(session, user_id)

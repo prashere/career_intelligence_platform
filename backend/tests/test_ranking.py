@@ -3,13 +3,20 @@
 from datetime import datetime, timedelta, timezone
 
 from app.models import FitLevel, Opportunity, OpportunityType, UserProfile
-from app.services.embeddings import calibrate_cosine_similarity, lexical_similarity
-from app.services.eligibility_scoring import evaluate_eligibility
+from app.services.embeddings import (
+    calibrate_cosine_similarity,
+    lexical_similarity,
+    matched_terms,
+)
+from app.services.eligibility_scoring import EligibilityEvaluation, evaluate_eligibility
+from app.services.opportunity_facts import apply_facts_to_opportunity, derive_facts
 from app.services.ranking import (
+    build_fit_reasons,
     build_score_breakdown,
     compute_composite,
     cosine_similarity,
     fit_level_from_score,
+    NEUTRAL_FIT_REASON,
     urgency_score,
     STRONG_FIT_THRESHOLD,
     MODERATE_FIT_THRESHOLD,
@@ -182,8 +189,172 @@ def test_fit_percent_in_response():
         opportunity_id=opp.id,
         status=UserOpportunityStatus.new,
         fit_score=0.673,
+        score_breakdown={
+            "reasons": [{"code": "interest_match", "label": "Matches AI", "direction": "positive"}],
+            "hide_match_percent": False,
+        },
     )
     resp = _to_response(opp, uo)
     assert resp.fit_percent == 67
     assert 0 <= resp.fit_percent <= 100
     assert resp.fit_percent == round(resp.fit_score * 100)
+
+
+def test_fit_percent_hidden_without_reasons():
+    opp = Opportunity(
+        id="opp-test-2",
+        title="Test",
+        url="https://example.com/t2",
+        opportunity_type=OpportunityType.scholarship,
+    )
+    uo = UserOpportunity(
+        user_id="p1",
+        opportunity_id=opp.id,
+        status=UserOpportunityStatus.new,
+        fit_score=0.5,
+        score_breakdown={"reasons": [], "hide_match_percent": True},
+        fit_explanation="Not enough information to explain this match",
+    )
+    resp = _to_response(opp, uo)
+    assert resp.fit_percent is None
+    assert resp.fit_score is None
+
+
+# --- Derived facts -------------------------------------------------------
+
+
+def _opp(title="Test fellowship", summary="", **kwargs):
+    return Opportunity(
+        id=kwargs.pop("id", "opp-facts"),
+        title=title,
+        url=kwargs.pop("url", "https://example.com/f"),
+        opportunity_type=kwargs.pop("opportunity_type", OpportunityType.fellowship),
+        summary=summary,
+        **kwargs,
+    )
+
+
+def test_derive_facts_parses_deadline_from_text():
+    facts = derive_facts(_opp(summary="Deadline: August 24, 2026\nApplications are open."))
+    assert facts.deadline is not None
+    assert facts.deadline.year == 2026 and facts.deadline.month == 8
+    assert facts.deadline_source == "text"
+
+
+def test_derive_facts_detects_rolling_and_unspecified():
+    assert derive_facts(_opp(summary="Deadline: On Rolling Basis")).deadline_note == "rolling"
+    assert derive_facts(_opp(summary="Deadline: Unspecified")).deadline_note == "unspecified"
+
+
+def test_derive_facts_detects_funding_and_themes():
+    facts = derive_facts(
+        _opp(summary="This is a fully funded fellowship in machine learning worth $30,000.")
+    )
+    assert facts.funding_type == "full"
+    assert facts.funding_amount is not None
+    assert "artificial intelligence" in facts.themes
+
+
+def test_derive_facts_recovers_degree_and_region():
+    facts = derive_facts(
+        _opp(summary="Open to Master's students based in Germany and across Europe.")
+    )
+    assert "master" in facts.degree_levels
+    assert "Europe" in facts.regions
+
+
+def test_apply_facts_backfills_only_empty_columns():
+    opp = _opp(summary="Deadline: March 3, 2027. A fully funded programme.", funding_type="partial")
+    facts = derive_facts(opp)
+    written = apply_facts_to_opportunity(opp, facts)
+    assert "deadline" in written
+    # An existing column value is never overwritten.
+    assert "funding_type" not in written
+    assert opp.funding_type == "partial"
+
+
+def test_matched_terms_returns_evidence():
+    hits = matched_terms(
+        ["machine learning", "climate policy", "underwater basket weaving"],
+        "A fellowship in machine learning and climate policy research",
+    )
+    assert "machine learning" in hits
+    assert "underwater basket weaving" not in hits
+
+
+# --- Reason floor --------------------------------------------------------
+
+
+def _empty_eval():
+    return EligibilityEvaluation(score=0.5, reasons=[], hard_failed=False)
+
+
+def test_reasons_never_empty_for_a_listing_with_text():
+    """A card must always carry at least one explanation."""
+    profile = UserProfile(user_id="u1", name="T", research_interests=[], target_regions=[])
+    opp = _opp(summary="A programme for early career professionals.")
+    facts = derive_facts(opp)
+
+    reasons, summary, hide = build_fit_reasons(
+        profile, opp, 0.0, False, None, _empty_eval(), False, 0.5, facts=facts
+    )
+
+    assert reasons, "expected at least one reason"
+    assert summary != NEUTRAL_FIT_REASON
+    assert hide is False
+
+
+def test_missing_deadline_is_stated_not_silently_dropped():
+    profile = UserProfile(user_id="u1", name="T", research_interests=[], target_regions=[])
+    opp = _opp(summary="A programme with no date given.")
+    reasons, _, _ = build_fit_reasons(
+        profile, opp, 0.2, True, "lexical", _empty_eval(), False, 0.5, facts=derive_facts(opp)
+    )
+    assert any(r["code"] == "deadline_missing" for r in reasons)
+
+
+def test_lexical_method_is_not_reported_as_unavailable():
+    """Keyword matching is a real signal and must not claim similarity is unavailable."""
+    profile = UserProfile(user_id="u1", name="T", research_interests=[], target_regions=[])
+    opp = _opp(summary="Machine learning fellowship.")
+    reasons, _, _ = build_fit_reasons(
+        profile, opp, 0.4, True, "lexical", _empty_eval(), False, 0.5, facts=derive_facts(opp)
+    )
+    codes = {r["code"] for r in reasons}
+    assert "semantic_keyword_only" in codes
+    assert "semantic_unavailable" not in codes
+
+
+def test_evidence_terms_appear_in_reason_label():
+    profile = UserProfile(user_id="u1", name="T", research_interests=[], target_regions=[])
+    opp = _opp(summary="Machine learning fellowship.")
+    reasons, _, _ = build_fit_reasons(
+        profile,
+        opp,
+        0.6,
+        True,
+        "cosine",
+        _empty_eval(),
+        False,
+        0.5,
+        facts=derive_facts(opp),
+        evidence_terms=["machine learning"],
+    )
+    semantic = next(r for r in reasons if r["code"] == "semantic_strong")
+    assert "machine learning" in semantic["label"]
+
+
+def test_unknown_fields_produce_neutral_reasons():
+    profile = UserProfile(
+        user_id="u1",
+        name="T",
+        degree_level="MSc",
+        research_interests=[],
+        target_regions=[],
+        constraints={"target_degree": "MSc"},
+    )
+    opp = _opp(summary="A short listing with no stated requirements.")
+    ev = evaluate_eligibility(profile, opp, {"require_funding": "full_only"})
+    codes = {r.code for r in ev.reasons}
+    assert "degree_unknown" in codes
+    assert "funding_unknown" in codes

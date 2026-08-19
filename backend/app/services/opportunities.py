@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Literal, Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -17,11 +17,15 @@ from app.models import (
 from app.schemas import (
     FeedResponse,
     FeedSummary,
+    OpportunityListResponse,
     OpportunityResponse,
     WeeklyFocusResponse,
 )
 from app.services.affinity import append_status_history
-from app.services.ranking import days_until, urgency_label
+from app.services.ranking import days_until, NEUTRAL_FIT_REASON, urgency_label
+
+Bucket = Literal["matches", "closing_soon", "saved", "applied", "dismissed"]
+SortMode = Literal["fit", "deadline"]
 
 
 def empty_feed() -> FeedResponse:
@@ -32,7 +36,20 @@ def empty_feed() -> FeedResponse:
 def _to_response(opp: Opportunity, uo: Optional[UserOpportunity] = None) -> OpportunityResponse:
     d = days_until(opp.deadline)
     fit_score = uo.fit_score if uo else None
-    fit_percent = round((fit_score or 0) * 100) if uo else None
+    breakdown = uo.score_breakdown if uo else None
+    hide_percent = bool(breakdown and breakdown.get("hide_match_percent"))
+    reasons = (breakdown or {}).get("reasons") or []
+    if not reasons and breakdown and breakdown.get("eligibility_reasons"):
+        hide_percent = hide_percent or len(breakdown.get("eligibility_reasons") or []) == 0
+
+    fit_percent: Optional[int] = None
+    if uo and fit_score is not None and not hide_percent:
+        fit_percent = round(fit_score * 100)
+
+    fit_explanation = uo.fit_explanation if uo else None
+    if hide_percent and uo:
+        fit_explanation = NEUTRAL_FIT_REASON
+
     return OpportunityResponse(
         id=opp.id,
         title=opp.title,
@@ -46,16 +63,153 @@ def _to_response(opp: Opportunity, uo: Optional[UserOpportunity] = None) -> Oppo
         tags=opp.tags or [],
         requirements=opp.requirements or [],
         status=uo.status.value if uo else None,
-        fit_score=fit_score,
+        fit_score=fit_score if not hide_percent else None,
         fit_percent=fit_percent,
         fit_level=uo.fit_level.value if uo and uo.fit_level else None,
-        fit_explanation=uo.fit_explanation if uo else None,
-        score_breakdown=uo.score_breakdown if uo else None,
+        fit_explanation=fit_explanation,
+        score_breakdown=breakdown,
+        rank_position=uo.rank_position if uo else None,
         verification_status=opp.verification_status,
         verified_at=opp.verified_at,
         days_until_deadline=d,
         urgency_label=urgency_label(d),
     )
+
+
+def _apply_sql_eligibility_filters(query, rules: dict, now: datetime):
+    """Cheap eligibility predicates pushed into SQL."""
+    query = query.where(
+        or_(Opportunity.deadline.is_(None), Opportunity.deadline >= now),
+    )
+    for phrase in rules.get("reject_if_text_contains") or []:
+        if not phrase:
+            continue
+        pattern = f"%{phrase}%"
+        query = query.where(
+            not_(
+                or_(
+                    Opportunity.title.ilike(pattern),
+                    Opportunity.summary.ilike(pattern),
+                )
+            )
+        )
+    require_funding = rules.get("require_funding")
+    if require_funding == "full_only":
+        query = query.where(
+            or_(
+                Opportunity.funding_type.is_(None),
+                Opportunity.funding_type.notin_(("self", "partial")),
+            )
+        )
+    return query
+
+
+async def list_opportunities(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    bucket: Bucket = "matches",
+    sort: SortMode = "fit",
+    verified_only: bool = False,
+    search: Optional[str] = None,
+    opportunity_type: Optional[str] = None,
+    funding_type: Optional[str] = None,
+    limit: int = 20,
+    cursor: Optional[str] = None,
+) -> OpportunityListResponse:
+    from app.ingestion.eligibility import load_eligibility_rules_for_user
+
+    now = datetime.now(timezone.utc)
+    offset = int(cursor or 0)
+    limit = max(1, min(limit, 100))
+
+    profile = await session.get(UserProfile, user_id)
+    eligibility_rules: dict = {}
+    if profile:
+        eligibility_rules = await load_eligibility_rules_for_user(session, profile.user_id)
+
+    base = (
+        select(Opportunity, UserOpportunity)
+        .outerjoin(
+            UserOpportunity,
+            (UserOpportunity.opportunity_id == Opportunity.id) & (UserOpportunity.user_id == user_id),
+        )
+        .where(
+            Opportunity.duplicate_of.is_(None),
+            or_(
+                Opportunity.verification_status.is_(None),
+                Opportunity.verification_status != "stale",
+            ),
+        )
+    )
+
+    if verified_only:
+        base = base.where(Opportunity.verification_status == "primary_confirmed")
+
+    if search:
+        base = base.where(
+            or_(
+                Opportunity.title.ilike(f"%{search}%"),
+                Opportunity.summary.ilike(f"%{search}%"),
+                Opportunity.search_vector.ilike(f"%{search.lower()}%"),
+            )
+        )
+
+    if opportunity_type:
+        base = base.where(Opportunity.opportunity_type == opportunity_type)
+
+    if funding_type:
+        base = base.where(Opportunity.funding_type == funding_type)
+
+    if eligibility_rules:
+        base = _apply_sql_eligibility_filters(base, eligibility_rules, now)
+
+    week_ahead = now + timedelta(days=14)
+
+    if bucket == "saved":
+        base = base.where(UserOpportunity.status == UserOpportunityStatus.saved)
+    elif bucket == "applied":
+        base = base.where(UserOpportunity.status == UserOpportunityStatus.in_progress)
+    elif bucket == "dismissed":
+        base = base.where(UserOpportunity.status == UserOpportunityStatus.archived)
+    elif bucket == "closing_soon":
+        base = base.where(
+            Opportunity.deadline.isnot(None),
+            Opportunity.deadline <= week_ahead,
+            Opportunity.deadline >= now,
+        )
+    else:
+        base = base.where(
+            or_(
+                UserOpportunity.status.is_(None),
+                UserOpportunity.status != UserOpportunityStatus.archived,
+            )
+        )
+
+    if sort == "deadline":
+        base = base.order_by(
+            Opportunity.deadline.asc().nullslast(),
+            UserOpportunity.rank_position.asc().nullslast(),
+            Opportunity.created_at.desc(),
+        )
+    else:
+        base = base.order_by(
+            UserOpportunity.rank_position.asc().nullslast(),
+            UserOpportunity.fit_score.desc().nullslast(),
+            Opportunity.created_at.desc(),
+        )
+
+    count_q = select(func.count()).select_from(base.order_by(None).subquery())
+    total = (await session.execute(count_q)).scalar_one()
+
+    result = await session.execute(base.offset(offset).limit(limit))
+    items = [_to_response(opp, uo) for opp, uo in result.all()]
+
+    next_cursor: Optional[str] = None
+    if offset + len(items) < total:
+        next_cursor = str(offset + len(items))
+
+    return OpportunityListResponse(items=items, total=total, next_cursor=next_cursor)
 
 
 async def get_feed(

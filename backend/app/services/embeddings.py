@@ -25,6 +25,10 @@ _fastembed_model: Optional[object] = None
 
 class EmbeddingProvider(ABC):
     name: str
+    # Raw-cosine band for merely-related text. Each model has its own similarity
+    # floor, so a single affine rescale cannot serve all of them.
+    cosine_floor: float = 0.15
+    cosine_ceiling: float = 0.55
 
     @abstractmethod
     async def embed(self, text: str) -> Optional[list[float]]:
@@ -33,6 +37,8 @@ class EmbeddingProvider(ABC):
 
 class OpenAIEmbeddingProvider(EmbeddingProvider):
     name = "openai"
+    cosine_floor = 0.15
+    cosine_ceiling = 0.55
 
     def __init__(self) -> None:
         self._client: Optional[AsyncOpenAI] = None
@@ -63,6 +69,8 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
 
 class GeminiEmbeddingProvider(EmbeddingProvider):
     name = "gemini"
+    cosine_floor = 0.50
+    cosine_ceiling = 0.88
 
     async def embed(self, text: str) -> Optional[list[float]]:
         key = settings.gemini_api_key
@@ -89,6 +97,10 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
 
 class FastEmbedProvider(EmbeddingProvider):
     name = "fastembed"
+    # BGE-family vectors are normalized and sit high: unrelated text still
+    # scores ~0.4, so the usable band is narrow and offset upward.
+    cosine_floor = 0.42
+    cosine_ceiling = 0.75
 
     def _model(self) -> Optional[object]:
         global _fastembed_model
@@ -117,8 +129,46 @@ class FastEmbedProvider(EmbeddingProvider):
         return None
 
 
+_STOPWORDS = {
+    "the", "and", "for", "with", "you", "your", "are", "was", "were", "this", "that",
+    "from", "have", "has", "had", "will", "can", "all", "any", "our", "their", "its",
+    "who", "which", "what", "when", "where", "how", "not", "but", "out", "off", "than",
+    "then", "them", "they", "she", "his", "her", "him", "one", "two", "new", "also",
+    "more", "most", "other", "such", "into", "over", "under", "about", "after", "before",
+    "open", "applications", "opportunity", "programme", "program", "apply", "applicants",
+}
+
+
 def _tokenize(text: str) -> list[str]:
-    return [w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2]
+    return [
+        w
+        for w in re.findall(r"[a-z0-9]+", text.lower())
+        if len(w) > 2 and w not in _STOPWORDS
+    ]
+
+
+def matched_terms(profile_terms: list[str], opportunity_text: str, limit: int = 4) -> list[str]:
+    """Profile phrases (interests, skills, regions) that literally appear in the listing."""
+    text_low = (opportunity_text or "").lower()
+    hits: list[str] = []
+    seen: set[str] = set()
+    for term in profile_terms:
+        cleaned = (term or "").strip()
+        if len(cleaned) < 3:
+            continue
+        key = cleaned.lower()
+        if key in seen or key in _STOPWORDS:
+            continue
+        if key in text_low:
+            seen.add(key)
+            hits.append(cleaned)
+        if len(hits) >= limit:
+            break
+    return hits
+
+
+def embedding_dimensions(vector: Optional[list[float]]) -> int:
+    return len(vector) if vector else 0
 
 
 def lexical_similarity(profile_text: str, opportunity_text: str) -> float:
@@ -151,9 +201,15 @@ def lexical_similarity(profile_text: str, opportunity_text: str) -> float:
     return max(0.0, min(1.0, normalized))
 
 
-def calibrate_cosine_similarity(raw_cosine: float) -> float:
-    """Affine rescale for text-embedding-3-small (related text ~0.35–0.6 raw)."""
-    return max(0.0, min(1.0, (raw_cosine - 0.15) / 0.40))
+def calibrate_cosine_similarity(raw_cosine: float, provider: Optional[str] = None) -> float:
+    """Rescale a raw cosine into 0–1 using the band that matches the source model."""
+    floor, ceiling = PROVIDER_COSINE_BANDS.get(
+        (provider or "").lower(), (DEFAULT_COSINE_FLOOR, DEFAULT_COSINE_CEILING)
+    )
+    span = ceiling - floor
+    if span <= 0:
+        return 0.0
+    return max(0.0, min(1.0, (raw_cosine - floor) / span))
 
 
 def cosine_similarity_vectors(a: list[float], b: list[float]) -> float:
@@ -194,15 +250,30 @@ def get_openai_client() -> Optional[AsyncOpenAI]:
     return get_embedding_client()
 
 
+DEFAULT_COSINE_FLOOR = 0.15
+DEFAULT_COSINE_CEILING = 0.55
+
+PROVIDER_COSINE_BANDS: dict[str, tuple[float, float]] = {
+    p.name: (p.cosine_floor, p.cosine_ceiling)
+    for p in (OpenAIEmbeddingProvider(), GeminiEmbeddingProvider(), FastEmbedProvider())
+}
+
+
 @traceable(run_type="embedding", name="embed_text", tags=["embeddings"])
-async def embed_text(text: str) -> Optional[list[float]]:
+async def embed_text_with_provider(text: str) -> tuple[Optional[list[float]], Optional[str]]:
+    """Embed text, also reporting which provider produced the vector."""
     if not text.strip():
-        return None
+        return None, None
     for provider in build_provider_chain():
         vector = await provider.embed(text)
         if vector:
-            return vector
-    return None
+            return vector, provider.name
+    return None, None
+
+
+async def embed_text(text: str) -> Optional[list[float]]:
+    vector, _ = await embed_text_with_provider(text)
+    return vector
 
 
 # Re-export chat helpers so existing imports keep working.
