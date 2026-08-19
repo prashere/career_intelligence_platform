@@ -56,9 +56,9 @@ The gate scores discovered items into `admit` / `investigate` / `reject`. Tune i
 | `validate_relevance_gate.py` | Live-discovers every registry aggregator and reports the verdict split per source. Use `--show-items` to see each decision and its evidence. | `python scripts/validate_relevance_gate.py --timeout 45` or `python scripts/validate_relevance_gate.py --aggregator profellow --show-items` |
 | `smoke_playground.py` | Runs the Ingestion lab code path against one aggregator, including DB writes. Needs a database, so run it inside Docker. | `docker compose exec api python scripts/smoke_playground.py opportunitydesk --resolve` |
 
----
+| `score_distribution.py` | Histogram of composite scores, fit levels, degraded components, missing deadlines. | `python scripts/score_distribution.py` or `python scripts/score_distribution.py --user-email you@example.com` |
 
-## Database, LLM, and dev setup
+---
 
 | Script | What it does | How to run |
 |--------|----------------|------------|
