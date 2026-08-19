@@ -52,8 +52,8 @@ export default function OpportunityCard({ opportunity, onClick }: Props) {
         {opportunity.urgency_label && (
           <span className={`opp-deadline ${urgencyClass}`}>{opportunity.urgency_label}</span>
         )}
-        {opportunity.fit_score != null && (
-          <span className="opp-score">{Math.round(opportunity.fit_score)}% match</span>
+        {opportunity.fit_percent != null && (
+          <span className="opp-score">{opportunity.fit_percent}% match</span>
         )}
       </div>
     </article>

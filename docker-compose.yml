@@ -77,7 +77,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: sh -c "alembic upgrade head && celery -A app.workers.celery_app beat --loglevel=info"
+    command: celery -A app.workers.celery_app beat --loglevel=info
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://career:career@db:5432/career_intelligence
@@ -90,7 +90,10 @@ services:
       - ./backend:/app
       - ./config:/workspace/config
     depends_on:
-      - worker
+      api:
+        condition: service_started
+      worker:
+        condition: service_started
 
   frontend:
     build:

@@ -15,6 +15,25 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export interface ScoreBreakdown {
+  semantic?: number;
+  eligibility?: number;
+  urgency?: number;
+  affinity?: number;
+  composite?: number;
+  semantic_raw?: number | null;
+  semantic_method?: string | null;
+  components_available?: string[];
+  weights_applied?: Record<string, number>;
+  eligibility_reasons?: Array<{
+    code: string;
+    label: string;
+    direction: string;
+    weight: number;
+  }>;
+  hard_eligibility_failed?: boolean;
+}
+
 export interface Opportunity {
   id: string;
   title: string;
@@ -24,11 +43,18 @@ export interface Opportunity {
   opportunity_type: string;
   url: string;
   deadline?: string;
+  opens_at?: string;
+  tags?: string[];
   requirements: string[];
   status?: string;
   fit_score?: number;
+  fit_percent?: number;
   fit_level?: string;
   fit_explanation?: string;
+  score_breakdown?: ScoreBreakdown;
+  verification_status?: string;
+  verified_at?: string;
+  days_until_deadline?: number;
   urgency_label?: string;
 }
 
