@@ -23,6 +23,7 @@ export interface ScoreBreakdown {
   composite?: number;
   semantic_raw?: number | null;
   semantic_method?: string | null;
+  semantic_degraded?: boolean;
   components_available?: string[];
   weights_applied?: Record<string, number>;
   eligibility_reasons?: Array<{
@@ -31,7 +32,34 @@ export interface ScoreBreakdown {
     direction: string;
     weight: number;
   }>;
+  reasons?: Array<{
+    code: string;
+    label: string;
+    direction: string;
+    weight?: number;
+    source?: string;
+  }>;
+  evidence_terms?: string[];
+  derived_facts?: {
+    deadline?: string | null;
+    deadline_note?: string | null;
+    deadline_source?: string;
+    funding_type?: string | null;
+    funding_amount?: string | null;
+    degree_levels?: string[];
+    regions?: string[];
+    themes?: string[];
+    formats?: string[];
+    remote?: boolean | null;
+  };
+  hide_match_percent?: boolean;
   hard_eligibility_failed?: boolean;
+}
+
+export interface OpportunityListResponse {
+  items: Opportunity[];
+  total: number;
+  next_cursor?: string | null;
 }
 
 export interface Opportunity {
@@ -52,6 +80,7 @@ export interface Opportunity {
   fit_level?: string;
   fit_explanation?: string;
   score_breakdown?: ScoreBreakdown;
+  rank_position?: number;
   verification_status?: string;
   verified_at?: string;
   days_until_deadline?: number;
@@ -128,6 +157,28 @@ export const api = {
     if (params?.status) qs.set('status', params.status);
     const q = qs.toString();
     return request<FeedResponse>(`/api/v1/feed${q ? `?${q}` : ''}`);
+  },
+  opportunities: (params?: {
+    bucket?: string;
+    sort?: string;
+    search?: string;
+    opportunity_type?: string;
+    funding_type?: string;
+    verified_only?: boolean;
+    limit?: number;
+    cursor?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.bucket) qs.set('bucket', params.bucket);
+    if (params?.sort) qs.set('sort', params.sort);
+    if (params?.search) qs.set('search', params.search);
+    if (params?.opportunity_type) qs.set('opportunity_type', params.opportunity_type);
+    if (params?.funding_type) qs.set('funding_type', params.funding_type);
+    if (params?.verified_only) qs.set('verified_only', 'true');
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.cursor) qs.set('cursor', params.cursor);
+    const q = qs.toString();
+    return request<OpportunityListResponse>(`/api/v1/opportunities${q ? `?${q}` : ''}`);
   },
   opportunity: (id: string) => request<Opportunity>(`/api/v1/opportunities/${id}`),
   updateStatus: (id: string, status: string) =>
