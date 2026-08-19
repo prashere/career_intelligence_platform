@@ -46,6 +46,7 @@ class OpportunityResponse(BaseModel):
     requirements: list = Field(default_factory=list)
     status: Optional[str] = None
     fit_score: Optional[float] = None
+    fit_percent: Optional[int] = None
     fit_level: Optional[str] = None
     fit_explanation: Optional[str] = None
     score_breakdown: Optional[dict] = None
