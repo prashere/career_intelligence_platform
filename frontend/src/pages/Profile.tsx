@@ -93,7 +93,7 @@ export default function Profile() {
       queryClient.invalidateQueries({ queryKey: ['structured-profile'] });
       setErrorModal(null);
       lastAlertKeyRef.current = null;
-      toast('Profile deleted — fill out a new setup form to start over', 'success');
+      toast('Profile deleted. Fill out a new setup form to start over', 'success');
       navigate('/profile/setup');
     },
     onError: (err: Error) => toast(err.message, 'error'),
@@ -115,7 +115,7 @@ export default function Profile() {
         'Profile processing failed. Check the step logs below and retry.';
       alertKey = `failed-${pipeline.id}-${failedStep?.name ?? 'run'}`;
     } else if (stuckStep) {
-      message = `Step "${stepLabel(stuckStep.name)}" has been running for over 8 minutes. The worker may be stuck — try retrying or contact support if this persists.`;
+      message = `Step "${stepLabel(stuckStep.name)}" has been running for over 8 minutes. The worker may be stuck. Try retrying or contact support if this persists.`;
       alertKey = `stuck-${pipeline.id}-${stuckStep.name}`;
     }
 

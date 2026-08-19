@@ -43,7 +43,18 @@ class UserOpportunityStatus(str, enum.Enum):
     new = "new"
     saved = "saved"
     in_progress = "in_progress"
+    applied = "applied"
+    dismissed = "dismissed"
     archived = "archived"
+
+
+class DismissReason(str, enum.Enum):
+    wrong_field = "wrong_field"
+    wrong_level = "wrong_level"
+    wrong_region = "wrong_region"
+    not_funded = "not_funded"
+    looks_fake = "looks_fake"
+    other = "other"
 
 
 class SourceType(str, enum.Enum):
@@ -166,6 +177,8 @@ class UserOpportunity(Base):
     fit_explanation: Mapped[Optional[str]] = mapped_column(Text)
     score_breakdown: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     status_history: Mapped[list] = mapped_column(JSONB, default=list)
+    dismiss_reason: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    status_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     rank_position: Mapped[Optional[int]] = mapped_column(Integer)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

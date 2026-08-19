@@ -155,8 +155,27 @@ async def update_status(
     db: AsyncSession = Depends(get_db),
     profile: UserProfile = Depends(get_current_user_profile),
 ):
-    uo = await update_user_opportunity(db, profile.id, opportunity_id, body.status, body.notes)
-    return {"id": uo.id, "status": uo.status.value}
+    try:
+        uo = await update_user_opportunity(
+            db,
+            profile.id,
+            opportunity_id,
+            body.status,
+            body.notes,
+            body.dismiss_reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "id": uo.id,
+        "status": uo.status.value,
+        "dismiss_reason": uo.dismiss_reason,
+        "fit_score": uo.fit_score,
+        "fit_level": uo.fit_level.value if uo.fit_level else None,
+        "score_breakdown": uo.score_breakdown,
+        "status_changed_at": uo.status_changed_at,
+        "status_history": uo.status_history,
+    }
 
 
 @router.get("/opportunities/{opportunity_id}/calendar")

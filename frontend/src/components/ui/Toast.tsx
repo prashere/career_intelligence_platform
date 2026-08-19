@@ -2,15 +2,21 @@ import { createContext, useCallback, useContext, useMemo, useState, ReactNode } 
 
 export type ToastVariant = 'success' | 'error' | 'info';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface Toast {
   id: string;
   message: string;
   variant: ToastVariant;
+  action?: ToastAction;
 }
 
 interface ToastContextValue {
   toasts: Toast[];
-  push: (message: string, variant?: ToastVariant) => void;
+  push: (message: string, variant?: ToastVariant, action?: ToastAction) => void;
   dismiss: (id: string) => void;
 }
 
@@ -24,10 +30,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const push = useCallback(
-    (message: string, variant: ToastVariant = 'info') => {
+    (message: string, variant: ToastVariant = 'info', action?: ToastAction) => {
       const id = crypto.randomUUID();
-      setToasts((prev) => [...prev, { id, message, variant }]);
-      window.setTimeout(() => dismiss(id), 4000);
+      setToasts((prev) => [...prev, { id, message, variant, action }]);
+      window.setTimeout(() => dismiss(id), action ? 8000 : 4000);
     },
     [dismiss],
   );
@@ -41,6 +47,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.variant}`} role="status">
             <span>{t.message}</span>
+            {t.action && (
+              <button
+                type="button"
+                className="toast-action"
+                onClick={() => {
+                  t.action?.onClick();
+                  dismiss(t.id);
+                }}
+              >
+                {t.action.label}
+              </button>
+            )}
             <button type="button" className="toast-close" onClick={() => dismiss(t.id)} aria-label="Dismiss">
               ×
             </button>

@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class HealthResponse(BaseModel):
@@ -45,6 +45,7 @@ class OpportunityResponse(BaseModel):
     tags: list = Field(default_factory=list)
     requirements: list = Field(default_factory=list)
     status: Optional[str] = None
+    dismiss_reason: Optional[str] = None
     fit_score: Optional[float] = None
     fit_percent: Optional[int] = None
     fit_level: Optional[str] = None
@@ -79,9 +80,30 @@ class FeedResponse(BaseModel):
     other: list[OpportunityResponse] = Field(default_factory=list)
 
 
+DismissReasonCode = Literal[
+    "wrong_field",
+    "wrong_level",
+    "wrong_region",
+    "not_funded",
+    "looks_fake",
+    "other",
+]
+
+
 class UserOpportunityUpdate(BaseModel):
     status: Optional[str] = None
     notes: Optional[str] = None
+    dismiss_reason: Optional[DismissReasonCode] = None
+
+    @field_validator("dismiss_reason")
+    @classmethod
+    def dismiss_reason_only_when_dismissed(cls, v: Optional[str], info) -> Optional[str]:
+        status = info.data.get("status")
+        if v is not None and status is not None and status != "dismissed":
+            raise ValueError("dismiss_reason is only valid when status is dismissed")
+        if status == "dismissed" and not v:
+            raise ValueError("dismiss_reason is required when status is dismissed")
+        return v
 
 
 class RequirementCreate(BaseModel):

@@ -235,13 +235,13 @@ def build_fit_reasons(
             )
     elif facts is not None and facts.deadline_note == "rolling":
         reasons.append(
-            _reason("deadline_rolling", "Rolling deadline — apply any time", "neutral", 0.0, "urgency")
+            _reason("deadline_rolling", "Rolling deadline. Apply any time", "neutral", 0.0, "urgency")
         )
     else:
         reasons.append(
             _reason(
                 "deadline_missing",
-                "No deadline published — ranked without urgency",
+                "No deadline published. Ranked without urgency",
                 "negative",
                 0.0,
                 "urgency",
@@ -254,7 +254,7 @@ def build_fit_reasons(
         reasons.append(
             _reason(
                 "semantic_keyword_only",
-                "Keyword matching used — semantic model not configured",
+                "Keyword matching used. Semantic model not configured",
                 "neutral",
                 0.0,
                 "system",
@@ -379,16 +379,45 @@ def _is_expired(deadline: Optional[datetime], now: datetime) -> bool:
 STORED_EMBEDDING_DIMENSIONS = 1536
 
 
+async def batch_embedding_cosine_similarities(
+    session: AsyncSession,
+    profile_embedding: list[float],
+    opportunity_ids: list[str],
+) -> dict[str, float]:
+    """Fetch raw cosine similarities via pgvector for all stored opportunity embeddings."""
+    if len(profile_embedding) != STORED_EMBEDDING_DIMENSIONS or not opportunity_ids:
+        return {}
+    dist = Opportunity.embedding.cosine_distance(profile_embedding)
+    sim_expr = (1 - dist).label("cosine_sim")
+    result = await session.execute(
+        select(Opportunity.id, sim_expr).where(
+            Opportunity.id.in_(opportunity_ids),
+            Opportunity.embedding.isnot(None),
+        )
+    )
+    return {row.id: float(row.cosine_sim) for row in result}
+
+
 async def _semantic_score(
     profile: UserProfile,
     opportunity: Opportunity,
     profile_text: str,
     profile_embedding: Optional[list[float]],
     provider_name: Optional[str] = None,
+    *,
+    precomputed_cosine: Optional[float] = None,
 ) -> tuple[float, Optional[float], Optional[str], bool]:
     opp_text = f"{opportunity.title}. {opportunity.summary or ''}"
 
     if profile_embedding:
+        if precomputed_cosine is not None:
+            return (
+                calibrate_cosine_similarity(precomputed_cosine, provider_name),
+                precomputed_cosine,
+                "cosine",
+                True,
+            )
+
         stored = opportunity.embedding
         if stored and len(stored) == len(profile_embedding):
             raw = cosine_similarity_vectors(profile_embedding, stored)
@@ -408,6 +437,66 @@ async def _semantic_score(
         return raw_lex, raw_lex, "lexical", True
 
     return 0.0, None, None, False
+
+
+async def recompute_affinity_for_opportunity(
+    session: AsyncSession,
+    user_id: str,
+    opportunity_id: str,
+) -> Optional[UserOpportunity]:
+    """Cheap in-place affinity + composite update for a single row after status feedback."""
+    result = await session.execute(
+        select(UserOpportunity, Opportunity)
+        .join(Opportunity, UserOpportunity.opportunity_id == Opportunity.id)
+        .where(
+            UserOpportunity.user_id == user_id,
+            UserOpportunity.opportunity_id == opportunity_id,
+        )
+    )
+    row = result.one_or_none()
+    if not row:
+        return None
+    uo, opp = row
+
+    uo_result = await session.execute(
+        select(UserOpportunity, Opportunity)
+        .join(Opportunity, UserOpportunity.opportunity_id == Opportunity.id)
+        .where(UserOpportunity.user_id == user_id)
+    )
+    affinity_profile = build_affinity_profile(uo_result.all())
+
+    breakdown = dict(uo.score_breakdown or {})
+    semantic = float(breakdown.get("semantic") or 0.0)
+    eligibility = float(breakdown.get("eligibility") or 0.0)
+    urgency = float(breakdown.get("urgency") or 0.0)
+    components_available = list(breakdown.get("components_available") or [])
+    hard_failed = bool(breakdown.get("hard_eligibility_failed"))
+
+    semantic_avail = "semantic" in components_available
+    urgency_avail = "urgency" in components_available
+    affinity_avail = True
+
+    aff = affinity_score(opp, uo, affinity_profile)
+    composite, weights_applied = compute_composite(
+        {
+            "semantic": (semantic, semantic_avail),
+            "eligibility": (eligibility, "eligibility" in components_available),
+            "urgency": (urgency, urgency_avail),
+            "affinity": (aff, affinity_avail),
+        }
+    )
+    if "affinity" not in components_available:
+        components_available.append("affinity")
+
+    breakdown["affinity"] = round(aff, 4)
+    breakdown["composite"] = round(composite, 4)
+    breakdown["weights_applied"] = weights_applied
+    breakdown["components_available"] = components_available
+
+    uo.score_breakdown = breakdown
+    uo.fit_score = round(composite, 3)
+    uo.fit_level = fit_level_from_score(composite, hard_eligibility_failed=hard_failed)
+    return uo
 
 
 async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) -> int:
@@ -461,6 +550,14 @@ async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) ->
     )
     active_opportunities = result.scalars().all()
 
+    precomputed_cosines: dict[str, float] = {}
+    if profile_embedding and len(profile_embedding) == STORED_EMBEDDING_DIMENSIONS:
+        precomputed_cosines = await batch_embedding_cosine_similarities(
+            session,
+            profile_embedding,
+            [o.id for o in active_opportunities],
+        )
+
     expired_result = await session.execute(
         select(Opportunity).where(
             Opportunity.duplicate_of.is_(None),
@@ -482,7 +579,12 @@ async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) ->
             facts_backfilled += 1
 
         semantic, semantic_raw, semantic_method, semantic_available = await _semantic_score(
-            profile, opp, profile_text, profile_embedding, provider_name
+            profile,
+            opp,
+            profile_text,
+            profile_embedding,
+            provider_name,
+            precomputed_cosine=precomputed_cosines.get(opp.id),
         )
         if semantic_method == "cosine":
             embedding_calls += 1

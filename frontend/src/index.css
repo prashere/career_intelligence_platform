@@ -1,4 +1,4 @@
-/* Career Intelligence — Royal professional design system */
+/* Career Intelligence: Royal professional design system */
 
 :root {
   color-scheme: light;
@@ -447,6 +447,56 @@ a:hover { color: var(--gold); }
   letter-spacing: 0.05em;
 }
 
+.dashboard-stats-bar {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+.dashboard-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1.35rem 1rem;
+  text-align: center;
+  border-right: 1px solid var(--border-light);
+  min-width: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, var(--surface) 100%);
+}
+.dashboard-stat:last-child {
+  border-right: none;
+}
+.dashboard-stat-value {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--navy);
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-stat-label {
+  font-size: var(--text-xs);
+  color: var(--text-soft);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.35;
+  max-width: 12rem;
+}
+.dashboard-stat-attention .dashboard-stat-value {
+  color: var(--navy);
+}
+.dashboard-stat-urgent .dashboard-stat-value {
+  color: #9a6700;
+}
+.dashboard-stat-urgent {
+  background: linear-gradient(180deg, rgba(201, 162, 39, 0.08) 0%, var(--surface) 100%);
+}
+
 .filter-bar {
   display: flex;
   flex-wrap: wrap;
@@ -603,7 +653,7 @@ a:hover { color: var(--gold); }
 }
 .skeleton-title { height: 2rem; width: 40%; margin-bottom: 1rem; }
 .skeleton-block { height: 200px; margin-bottom: 1rem; }
-.skeleton-kpi { height: 80px; margin-bottom: 1.5rem; }
+.skeleton-kpi { height: 88px; margin-bottom: 1.5rem; }
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
@@ -632,6 +682,12 @@ a:hover { color: var(--gold); }
 .toast-success { background: var(--success-bg); border: 1px solid rgba(45, 106, 79, 0.2); color: var(--success); }
 .toast-error { background: var(--error-bg); border: 1px solid rgba(155, 35, 53, 0.2); color: var(--error); }
 .toast-info { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+.toast-action {
+  font: inherit; font-size: var(--text-sm); font-weight: 600;
+  color: var(--navy); background: none; border: none; padding: 0; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.toast-action:hover { color: var(--gold); }
 .toast-close { background: none; border: none; cursor: pointer; font-size: 1.1rem; opacity: 0.6; margin-left: auto; }
 @keyframes slideIn {
   from { transform: translateY(8px); opacity: 0; }
@@ -1383,6 +1439,20 @@ code {
   .sidebar-backdrop { display: block; }
   .main-content { padding: 1.25rem; max-width: 100%; }
   .detail-layout, .dashboard-grid, .dashboard-layout, .form-row, .review-layout, .intake-body, .kpi-strip { grid-template-columns: 1fr; }
+  .dashboard-stats-bar {
+    flex-wrap: wrap;
+  }
+  .dashboard-stat {
+    flex: 1 1 50%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-light);
+  }
+  .dashboard-stat:nth-child(odd) {
+    border-right: 1px solid var(--border-light);
+  }
+  .dashboard-stat:nth-last-child(-n+2) {
+    border-bottom: none;
+  }
   .stepper ol { flex-direction: row; flex-wrap: wrap; }
   .stepper-label { display: none; }
   .stepper-h-label { font-size: 0.65rem; }
@@ -3088,3 +3158,72 @@ input[type="number"].form-control {
 .dashboard-load-more { min-width: 140px; }
 .dashboard-empty { padding: 1.5rem; text-align: center; }
 .dashboard-summary-strip { margin-bottom: 1.25rem; }
+
+/* ——— Feature 2: status controls on cards ——— */
+.opp-card-priority {
+  background: linear-gradient(135deg, rgba(201, 162, 39, 0.12) 0%, rgba(255, 248, 230, 0.95) 55%, var(--surface) 100%);
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  box-shadow: 0 2px 8px rgba(201, 162, 39, 0.08);
+}
+.opp-card-priority .opp-title { color: var(--navy); }
+.opp-card-priority .opp-rank-badge {
+  background: rgba(201, 162, 39, 0.15);
+  border-color: rgba(201, 162, 39, 0.4);
+  color: #8a6d1a;
+}
+.opp-card-priority.opp-card-status-saved,
+.opp-card-priority.opp-card-status-applied,
+.opp-card-priority.opp-card-status-dismissed {
+  border-left-width: 4px;
+}
+.dashboard-priority-block {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: var(--radius);
+  background: rgba(201, 162, 39, 0.06);
+  border: 1px solid rgba(201, 162, 39, 0.2);
+}
+.dashboard-all-matches-block { margin-top: 1.25rem; }
+.dashboard-section-head { margin-bottom: 0.65rem; }
+.dashboard-section-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--navy);
+  margin: 0;
+}
+.dashboard-section-sub {
+  font-size: var(--text-xs);
+  margin: 0.2rem 0 0;
+}
+.dashboard-priority-block .dashboard-section-title { color: #8a6d1a; }
+.opp-card-status-saved { border-left: 3px solid var(--gold); }
+.opp-card-status-applied { border-left: 3px solid var(--success); }
+.opp-card-status-dismissed { opacity: 0.72; border-left: 3px solid var(--border); }
+.opp-action-row {
+  display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0.25rem;
+}
+.opp-action-btn {
+  font: inherit; font-size: var(--text-xs); font-weight: 600;
+  padding: 0.35rem 0.75rem; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--navy);
+  cursor: pointer;
+}
+.opp-action-btn:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+.opp-action-btn.active { background: var(--navy); border-color: var(--navy); color: #fff; }
+.opp-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.opp-action-dismiss:hover:not(:disabled) { border-color: var(--burgundy); color: var(--burgundy); }
+.opp-dismiss-hint { margin-bottom: 0.75rem; font-size: var(--text-sm); }
+.opp-dismiss-reasons { display: flex; flex-direction: column; gap: 0.5rem; }
+.opp-dismiss-reason-btn {
+  font: inherit; font-size: var(--text-sm); text-align: left;
+  padding: 0.65rem 0.85rem; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--bg-alt); cursor: pointer;
+}
+.opp-dismiss-reason-btn:hover { border-color: var(--navy); background: var(--surface); }
+.opp-restore-btn {
+  font: inherit; font-size: var(--text-xs); font-weight: 600;
+  padding: 0.35rem 0.75rem; border: none; background: none;
+  color: var(--navy); cursor: pointer; text-decoration: underline;
+}

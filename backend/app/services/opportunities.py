@@ -63,6 +63,7 @@ def _to_response(opp: Opportunity, uo: Optional[UserOpportunity] = None) -> Oppo
         tags=opp.tags or [],
         requirements=opp.requirements or [],
         status=uo.status.value if uo else None,
+        dismiss_reason=uo.dismiss_reason if uo else None,
         fit_score=fit_score if not hide_percent else None,
         fit_percent=fit_percent,
         fit_level=uo.fit_level.value if uo and uo.fit_level else None,
@@ -169,9 +170,17 @@ async def list_opportunities(
     if bucket == "saved":
         base = base.where(UserOpportunity.status == UserOpportunityStatus.saved)
     elif bucket == "applied":
-        base = base.where(UserOpportunity.status == UserOpportunityStatus.in_progress)
+        base = base.where(
+            UserOpportunity.status.in_(
+                [UserOpportunityStatus.applied, UserOpportunityStatus.in_progress]
+            )
+        )
     elif bucket == "dismissed":
-        base = base.where(UserOpportunity.status == UserOpportunityStatus.archived)
+        base = base.where(
+            UserOpportunity.status.in_(
+                [UserOpportunityStatus.dismissed, UserOpportunityStatus.archived]
+            )
+        )
     elif bucket == "closing_soon":
         base = base.where(
             Opportunity.deadline.isnot(None),
@@ -182,7 +191,12 @@ async def list_opportunities(
         base = base.where(
             or_(
                 UserOpportunity.status.is_(None),
-                UserOpportunity.status != UserOpportunityStatus.archived,
+                UserOpportunity.status.not_in(
+                    [
+                        UserOpportunityStatus.archived,
+                        UserOpportunityStatus.dismissed,
+                    ]
+                ),
             )
         )
 
@@ -340,6 +354,7 @@ async def update_user_opportunity(
     opportunity_id: str,
     status: Optional[str] = None,
     notes: Optional[str] = None,
+    dismiss_reason: Optional[str] = None,
 ) -> UserOpportunity:
     result = await session.execute(
         select(UserOpportunity).where(
@@ -351,19 +366,47 @@ async def update_user_opportunity(
     if not uo:
         uo = UserOpportunity(user_id=user_id, opportunity_id=opportunity_id)
         session.add(uo)
+
+    status_changed = False
+    now = datetime.now(timezone.utc)
+
     if status:
         new_status = UserOpportunityStatus(status)
-        append_status_history(uo, new_status)
+        if new_status == UserOpportunityStatus.dismissed and not dismiss_reason:
+            raise ValueError("dismiss_reason is required when status is dismissed")
+        append_status_history(
+            uo,
+            new_status,
+            at=now,
+            dismiss_reason=dismiss_reason if new_status == UserOpportunityStatus.dismissed else None,
+        )
         uo.status = new_status
+        uo.status_changed_at = now
+        if new_status == UserOpportunityStatus.dismissed:
+            uo.dismiss_reason = dismiss_reason
+        else:
+            uo.dismiss_reason = None
+        status_changed = True
+
     if notes is not None:
         uo.notes = notes
+
+    if status_changed:
+        await session.flush()
+        from app.services.ranking import recompute_affinity_for_opportunity
+
+        await recompute_affinity_for_opportunity(session, user_id, opportunity_id)
+
     await session.commit()
     await session.refresh(uo)
 
-    if status:
-        from app.services.ranking import rank_opportunities_for_user
+    if status_changed:
+        try:
+            from app.workers.profile.tasks import schedule_debounced_rerank
 
-        await rank_opportunities_for_user(session, user_id)
+            schedule_debounced_rerank(user_id)
+        except Exception:
+            pass
 
     return uo
 
@@ -391,7 +434,12 @@ async def get_weekly_focus(session: AsyncSession, user_id: str) -> WeeklyFocusRe
         .join(Opportunity)
         .where(
             UserOpportunity.user_id == user_id,
-            UserOpportunity.status == UserOpportunityStatus.in_progress,
+            UserOpportunity.status.in_(
+                [
+                    UserOpportunityStatus.in_progress,
+                    UserOpportunityStatus.applied,
+                ]
+            ),
             Opportunity.deadline.isnot(None),
             Opportunity.deadline <= week_end,
         )

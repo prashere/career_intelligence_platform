@@ -12,8 +12,21 @@ STATUS_SIGNAL: dict[UserOpportunityStatus, float] = {
     UserOpportunityStatus.new: 0.5,
     UserOpportunityStatus.saved: 0.72,
     UserOpportunityStatus.in_progress: 0.88,
+    UserOpportunityStatus.applied: 0.92,
     UserOpportunityStatus.archived: 0.25,
+    UserOpportunityStatus.dismissed: 0.15,
 }
+
+POSITIVE_STATUSES = (
+    UserOpportunityStatus.saved,
+    UserOpportunityStatus.in_progress,
+    UserOpportunityStatus.applied,
+)
+
+NEGATIVE_STATUSES = (
+    UserOpportunityStatus.archived,
+    UserOpportunityStatus.dismissed,
+)
 
 
 @dataclass
@@ -26,13 +39,29 @@ class AffinityProfile:
     negative_institutions: dict[str, float] = field(default_factory=dict)
 
 
+def _positive_weight(status: UserOpportunityStatus) -> float:
+    if status == UserOpportunityStatus.saved:
+        return 0.6
+    if status in (UserOpportunityStatus.in_progress, UserOpportunityStatus.applied):
+        return 1.0
+    return 0.0
+
+
+def _negative_weight(uo: UserOpportunity) -> float:
+    if uo.status == UserOpportunityStatus.archived:
+        return 0.5
+    if uo.status == UserOpportunityStatus.dismissed:
+        return 0.85 if uo.dismiss_reason else 0.5
+    return 0.0
+
+
 def build_affinity_profile(
     rows: list[tuple[UserOpportunity, Opportunity]],
 ) -> AffinityProfile:
     profile = AffinityProfile()
     for uo, opp in rows:
-        if uo.status in (UserOpportunityStatus.saved, UserOpportunityStatus.in_progress):
-            weight = 1.0 if uo.status == UserOpportunityStatus.in_progress else 0.6
+        if uo.status in POSITIVE_STATUSES:
+            weight = _positive_weight(uo.status)
             for tag in opp.tags or []:
                 key = tag.lower().strip()
                 if key:
@@ -40,14 +69,15 @@ def build_affinity_profile(
             if opp.institution:
                 inst = opp.institution.lower().strip()
                 profile.positive_institutions[inst] = profile.positive_institutions.get(inst, 0) + weight
-        elif uo.status == UserOpportunityStatus.archived:
+        elif uo.status in NEGATIVE_STATUSES:
+            neg_weight = _negative_weight(uo)
             for tag in opp.tags or []:
                 key = tag.lower().strip()
                 if key:
-                    profile.negative_tags[key] = profile.negative_tags.get(key, 0) + 0.5
+                    profile.negative_tags[key] = profile.negative_tags.get(key, 0) + neg_weight
             if opp.institution:
                 inst = opp.institution.lower().strip()
-                profile.negative_institutions[inst] = profile.negative_institutions.get(inst, 0) + 0.5
+                profile.negative_institutions[inst] = profile.negative_institutions.get(inst, 0) + neg_weight
     return profile
 
 
@@ -84,16 +114,18 @@ def append_status_history(
     new_status: UserOpportunityStatus,
     *,
     at: Optional[datetime] = None,
+    dismiss_reason: Optional[str] = None,
 ) -> None:
     history: list[dict[str, Any]] = list(uo.status_history or [])
     prev = uo.status.value if uo.status else None
-    if prev == new_status.value:
+    if prev == new_status.value and not dismiss_reason:
         return
-    history.append(
-        {
-            "from": prev,
-            "to": new_status.value,
-            "at": (at or datetime.now(timezone.utc)).isoformat(),
-        }
-    )
+    entry: dict[str, Any] = {
+        "from": prev,
+        "to": new_status.value,
+        "at": (at or datetime.now(timezone.utc)).isoformat(),
+    }
+    if dismiss_reason:
+        entry["dismiss_reason"] = dismiss_reason
+    history.append(entry)
     uo.status_history = history[-50:]

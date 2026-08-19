@@ -75,6 +75,7 @@ export interface Opportunity {
   tags?: string[];
   requirements: string[];
   status?: string;
+  dismiss_reason?: string;
   fit_score?: number;
   fit_percent?: number;
   fit_level?: string;
@@ -181,8 +182,23 @@ export const api = {
     return request<OpportunityListResponse>(`/api/v1/opportunities${q ? `?${q}` : ''}`);
   },
   opportunity: (id: string) => request<Opportunity>(`/api/v1/opportunities/${id}`),
-  updateStatus: (id: string, status: string) =>
-    request(`/api/v1/opportunities/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  updateStatus: (
+    id: string,
+    body: { status: string; dismiss_reason?: string; notes?: string },
+  ) =>
+    request<{
+      id: string;
+      status: string;
+      dismiss_reason?: string | null;
+      fit_score?: number;
+      fit_level?: string;
+      score_breakdown?: ScoreBreakdown;
+      status_changed_at?: string;
+      status_history?: Array<Record<string, string>>;
+    }>(`/api/v1/opportunities/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   chat: (id: string, message: string) =>
     request<ChatResponse>(`/api/v1/opportunities/${id}/chat`, { method: 'POST', body: JSON.stringify({ message }) }),
   agentChat: (id: string, message: string) =>

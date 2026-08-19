@@ -16,10 +16,6 @@ export default function Dashboard() {
     queryKey: ['intake-status'],
     queryFn: intakeApi.status,
   });
-  const { data: listPreview } = useQuery({
-    queryKey: ['opportunities', 'matches', 'fit', 'preview'],
-    queryFn: () => api.opportunities({ bucket: 'matches', sort: 'fit', limit: 20 }),
-  });
 
   if (dashboardLoading) {
     return (
@@ -32,7 +28,7 @@ export default function Dashboard() {
   }
 
   const profileComplete = intakeStatus?.has_structured_profile ?? false;
-  const deadlinesWeek = listPreview?.items.filter(
+  const deadlinesWeek = data?.updated_cards.filter(
     (o) => o.days_until_deadline != null && o.days_until_deadline <= 7,
   ).length;
 
@@ -41,7 +37,7 @@ export default function Dashboard() {
       <PageHeader
         eyebrow="Overview"
         title="Dashboard"
-        lead="Ranked matches with explainable fit — every score tied to a reason from your profile."
+        lead="Ranked matches with explainable fit. Every score ties to a reason from your profile."
         actions={
           !profileComplete ? (
             <Link to="/profile/setup">
@@ -65,20 +61,8 @@ export default function Dashboard() {
 
       <DashboardHeaderSummary
         dashboard={data}
-        newThisWeek={listPreview?.total}
         deadlinesWeek={deadlinesWeek}
       />
-
-      {data?.updated_cards.length ? (
-        <section className="card dashboard-panel dashboard-priority">
-          <h3 className="panel-title">Priority this week</h3>
-          <div className="card-list">
-            {data.updated_cards.slice(0, 4).map((opp) => (
-              <OpportunityCard key={opp.id} opportunity={opp} showRank />
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       <MatchList />
 

@@ -264,7 +264,7 @@ def evaluate_eligibility(
             reasons.append(
                 EligibilityReason(
                     code="funding_partial",
-                    label="Partial funding only — you require full funding",
+                    label="Partial funding only. You require full funding",
                     direction="negative",
                     weight=0.18,
                 )
@@ -274,7 +274,7 @@ def evaluate_eligibility(
             reasons.append(
                 EligibilityReason(
                     code="funding_self",
-                    label="Self-funded — you require full funding",
+                    label="Self-funded. You require full funding",
                     direction="hard_fail",
                     weight=0.0,
                 )

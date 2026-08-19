@@ -133,7 +133,7 @@ export default function ProfileIntake() {
       setRegionsInput('');
       setCountriesInput('');
       setStep(0);
-      toast('Profile deleted — you can start fresh', 'success');
+      toast('Profile deleted. You can start fresh', 'success');
     },
     onError: (err: Error) => toast(err.message, 'error'),
   });
@@ -149,7 +149,7 @@ export default function ProfileIntake() {
       intakeApi.submit(s, toPayload(f), cv),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['intake-status'] });
-      toast('Profile submitted — processing started', 'success');
+      toast('Profile submitted. Processing started', 'success');
       navigate('/profile');
     },
     onError: (err: Error) => toast(err.message, 'error'),
