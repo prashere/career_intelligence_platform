@@ -31,6 +31,8 @@ def empty_feed() -> FeedResponse:
 
 def _to_response(opp: Opportunity, uo: Optional[UserOpportunity] = None) -> OpportunityResponse:
     d = days_until(opp.deadline)
+    fit_score = uo.fit_score if uo else None
+    fit_percent = round((fit_score or 0) * 100) if uo else None
     return OpportunityResponse(
         id=opp.id,
         title=opp.title,
@@ -44,7 +46,8 @@ def _to_response(opp: Opportunity, uo: Optional[UserOpportunity] = None) -> Oppo
         tags=opp.tags or [],
         requirements=opp.requirements or [],
         status=uo.status.value if uo else None,
-        fit_score=uo.fit_score if uo else None,
+        fit_score=fit_score,
+        fit_percent=fit_percent,
         fit_level=uo.fit_level.value if uo and uo.fit_level else None,
         fit_explanation=uo.fit_explanation if uo else None,
         score_breakdown=uo.score_breakdown if uo else None,
