@@ -13,6 +13,12 @@ from app.models.core import (
     UserStructuredProfile,
 )
 from app.models.ingestion import (
+    CandidateEvaluationVerdict,
+    CandidateSource,
+    CandidateSourceStatus,
+    DiscoveryRun,
+    DiscoveryRunStage,
+    DiscoveryRunStatus,
     IngestionRun,
     IngestionRunStatus,
     IngestionTraceEvent,
@@ -46,7 +52,13 @@ from app.models.verification import DomainLegitimacyCache, OrgDomainCache, Verif
 __all__ = [
     "AgentThread",
     "Application",
+    "CandidateEvaluationVerdict",
+    "CandidateSource",
+    "CandidateSourceStatus",
     "Community",
+    "DiscoveryRun",
+    "DiscoveryRunStage",
+    "DiscoveryRunStatus",
     "DismissReason",
     "DocumentChunk",
     "DomainLegitimacyCache",

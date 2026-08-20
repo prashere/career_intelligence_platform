@@ -18,6 +18,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
   const items = isAdmin
     ? [
         ...BASE_NAV,
+        { to: '/admin/sources', label: 'Sources', end: false as const },
         { to: '/admin/ingestion', label: 'Ingestion', end: false as const },
         { to: '/admin/ingestion/playground', label: 'Ingestion lab', end: false as const },
         { to: '/admin/schedulers', label: 'Background tasks', end: false as const },

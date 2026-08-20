@@ -10,6 +10,7 @@ class SchedulerJobResponse(BaseModel):
     key: str
     name: str
     description: str
+    info_detail: str | None = None
     task_path: str
     schedule_kind: str
     cron_minute: str | None
@@ -183,3 +184,60 @@ class PlaygroundResponse(BaseModel):
     errors: int | None = None
     error: str | None = None
     dry_run: bool | None = None
+
+
+class DiscoveryRunResponse(BaseModel):
+    id: str
+    user_id: str
+    status: str
+    current_stage: str
+    queries_used: list[dict] = Field(default_factory=list)
+    candidates_found: int
+    candidates_evaluated: int
+    error_message: str | None = None
+    triggered_at: datetime
+    finished_at: datetime | None = None
+    meta: dict = Field(default_factory=dict)
+
+    model_config = {"from_attributes": True}
+
+
+class CandidateSourceResponse(BaseModel):
+    id: str
+    discovery_run_id: str
+    domain: str
+    discovered_url: str
+    evaluation_verdict: str
+    relevance_notes: str
+    legitimacy_notes: str
+    confidence: float
+    guessed_parser_config: dict = Field(default_factory=dict)
+    status: str
+    created_at: datetime
+    reviewed_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class CandidateApprovalRequest(BaseModel):
+    registry_id: str
+    name: str
+    url: str
+    source_type: str = "html"
+    fetch_mode: str = "http"
+    fetch_interval_minutes: int = 360
+    adapter_id: str | None = None
+    summary_completeness: str = "snippet_only"
+    authority: float = 0.5
+    politeness_delay_ms: int = 2500
+    regions: list[str] = Field(default_factory=lambda: ["global"])
+    tags: list[str] = Field(default_factory=list)
+    degree_levels: list[str] = Field(default_factory=lambda: ["Mixed"])
+    parser_config: dict = Field(default_factory=dict)
+
+
+class CandidateApprovalResponse(BaseModel):
+    ok: bool = True
+    registry_id: str
+    name: str
+    url: str

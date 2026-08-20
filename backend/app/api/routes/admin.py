@@ -11,6 +11,10 @@ from app.ingestion.playground import list_registry_aggregators, run_playground
 from app.ingestion.runs import get_run_detail, recent_rejected, recent_runs, source_health
 from app.models import IngestionRun, Opportunity, OpportunitySource, ScheduleKind, SchedulerJob, User
 from app.schemas.admin import (
+    CandidateApprovalRequest,
+    CandidateApprovalResponse,
+    CandidateSourceResponse,
+    DiscoveryRunResponse,
     IngestionOverviewResponse,
     IngestionRunDetailResponse,
     IngestionRunResponse,
@@ -24,10 +28,30 @@ from app.schemas.admin import (
     TraceEventResponse,
 )
 from app.services.ingestion import fetch_source
-from app.services.schedulers import seed_scheduler_jobs
+from app.services.schedulers import scheduler_info_detail, seed_scheduler_jobs
 from app.workers.ingest.tasks import fetch_all_sources_task, fetch_source_task
+from app.workers.source_discovery.tasks import run_discovery_task
+from app.source_discovery.contracts import SourceApprovalPayload
+from app.source_discovery.service import (
+    approve_candidate,
+    build_approval_defaults,
+    create_discovery_run,
+    get_candidate,
+    get_discovery_run,
+    list_discovery_runs,
+    list_run_candidates,
+    reject_candidate,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _scheduler_response(job: SchedulerJob) -> SchedulerJobResponse:
+    data = SchedulerJobResponse.model_validate(job)
+    detail = scheduler_info_detail(job.key)
+    if detail:
+        data.info_detail = detail
+    return data
 
 
 @router.get("/schedulers", response_model=list[SchedulerJobResponse])
@@ -36,7 +60,7 @@ async def list_schedulers(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(SchedulerJob).order_by(SchedulerJob.category, SchedulerJob.name))
-    return result.scalars().all()
+    return [_scheduler_response(job) for job in result.scalars().all()]
 
 
 @router.patch("/schedulers/{job_key}", response_model=SchedulerJobResponse)
@@ -66,7 +90,7 @@ async def update_scheduler(
 
     await db.commit()
     await db.refresh(job)
-    return job
+    return _scheduler_response(job)
 
 
 @router.post("/schedulers/seed", response_model=dict)
@@ -74,8 +98,25 @@ async def seed_schedulers(
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    added = await seed_scheduler_jobs(db)
-    return {"seeded": added}
+    changed = await seed_scheduler_jobs(db, reset_defaults=True)
+    return {"seeded": changed}
+
+
+@router.post("/schedulers/{job_key}/run", response_model=dict)
+async def run_scheduler_job(
+    job_key: str,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(SchedulerJob).where(SchedulerJob.key == job_key))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Scheduler job not found")
+
+    from celery import current_app
+
+    current_app.send_task(job.task_path)
+    return {"queued": True, "task": job.task_path, "key": job.key}
 
 
 @router.get("/ingestion/overview", response_model=IngestionOverviewResponse)
@@ -216,3 +257,113 @@ async def trigger_source_fetch(
 async def trigger_source_fetch_async(source_id: str, _: User = Depends(require_admin)):
     fetch_source_task.delay(source_id)
     return {"status": "queued", "source_id": source_id}
+
+
+@router.post("/source-discovery/runs", response_model=DiscoveryRunResponse)
+async def trigger_source_discovery(
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        run = await create_discovery_run(db, user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    run_discovery_task.delay(run.id)
+    return DiscoveryRunResponse.model_validate(run)
+
+
+@router.get("/source-discovery/runs", response_model=list[DiscoveryRunResponse])
+async def list_source_discovery_runs(
+    limit: int = Query(20, ge=1, le=100),
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    runs = await list_discovery_runs(db, user.id, limit=limit)
+    return [DiscoveryRunResponse.model_validate(r) for r in runs]
+
+
+@router.get("/source-discovery/runs/{run_id}", response_model=DiscoveryRunResponse)
+async def get_source_discovery_run(
+    run_id: str,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    run = await get_discovery_run(db, run_id)
+    if not run or run.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Discovery run not found")
+    return DiscoveryRunResponse.model_validate(run)
+
+
+@router.get(
+    "/source-discovery/runs/{run_id}/candidates",
+    response_model=list[CandidateSourceResponse],
+)
+async def list_source_discovery_candidates(
+    run_id: str,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    run = await get_discovery_run(db, run_id)
+    if not run or run.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Discovery run not found")
+    candidates = await list_run_candidates(db, run_id)
+    return [CandidateSourceResponse.model_validate(c) for c in candidates]
+
+
+@router.get("/source-discovery/candidates/{candidate_id}", response_model=CandidateSourceResponse)
+async def get_source_discovery_candidate(
+    candidate_id: str,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    candidate = await get_candidate(db, candidate_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    return CandidateSourceResponse.model_validate(candidate)
+
+
+@router.get(
+    "/source-discovery/candidates/{candidate_id}/approval-defaults",
+    response_model=CandidateApprovalRequest,
+)
+async def get_candidate_approval_defaults(
+    candidate_id: str,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    candidate = await get_candidate(db, candidate_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    defaults = build_approval_defaults(candidate)
+    return CandidateApprovalRequest.model_validate(defaults.model_dump())
+
+
+@router.post("/source-discovery/candidates/{candidate_id}/reject", response_model=CandidateSourceResponse)
+async def reject_source_discovery_candidate(
+    candidate_id: str,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        candidate = await reject_candidate(db, candidate_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return CandidateSourceResponse.model_validate(candidate)
+
+
+@router.post(
+    "/source-discovery/candidates/{candidate_id}/approve",
+    response_model=CandidateApprovalResponse,
+)
+async def approve_source_discovery_candidate(
+    candidate_id: str,
+    body: CandidateApprovalRequest,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = SourceApprovalPayload.model_validate(body.model_dump())
+    try:
+        result = await approve_candidate(db, candidate_id, payload, user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CandidateApprovalResponse(**result)

@@ -16,6 +16,7 @@ celery_app = Celery(
         "app.workers.notifications.tasks",
         "app.workers.profile.tasks",
         "app.workers.verification.tasks",
+        "app.workers.source_discovery.tasks",
     ],
 )
 

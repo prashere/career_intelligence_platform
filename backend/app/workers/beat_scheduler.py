@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from celery.beat import PersistentScheduler
+from celery.beat import PersistentScheduler, ScheduleEntry
 from celery.schedules import crontab, schedule as interval_schedule
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -47,7 +47,13 @@ class DatabaseScheduler(PersistentScheduler):
             for job in jobs:
                 if not job.is_enabled:
                     continue
-                schedule[job.key] = build_celery_schedule_entry(job)
+                entry = build_celery_schedule_entry(job)
+                schedule[job.key] = ScheduleEntry(
+                    name=job.key,
+                    task=entry["task"],
+                    schedule=entry["schedule"],
+                    options={},
+                )
 
         self.schedule.clear()
         self.schedule.update(schedule)

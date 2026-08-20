@@ -2,17 +2,68 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ScheduleKind, SchedulerCategory, SchedulerJob
 
+# Long-form hover / admin help text (also mirrored in docs/background-schedulers.md).
+SCHEDULER_INFO_DETAILS: dict[str, str] = {
+    "ingestion-sync-hourly": (
+        "Runs the full ingestion maintenance cycle every hour. "
+        "Fetches RSS/HTML listings from every active opportunity source through the ingestion pipeline "
+        "(discover → relevance gate → persist opportunities). "
+        "Then normalizes any backlog raw documents, indexes opportunities missing RAG chunks, "
+        "and deactivates sources that exceeded the consecutive failure threshold. "
+        "Replaces the former separate fetch, normalize, and health-check jobs."
+    ),
+    "rerank-daily": (
+        "Recomputes fit scores and explanations for every user profile against the current opportunity "
+        "catalog. Updates UserOpportunity rows so the dashboard feed order and match badges reflect "
+        "compiled filter_config and ranking weights. Runs before most users open the app."
+    ),
+    "notifications-daily": (
+        "Morning notification batch for all users. Sends the daily digest (new strong/moderate matches "
+        "from the last 24 hours) and deadline reminders (7, 3, and 1 days before application deadlines "
+        "for saved or in-progress opportunities). Creates in-app notifications and attempts email delivery "
+        "when email is configured."
+    ),
+    "staleness-check-weekly": (
+        "Weekly quality pass on stored opportunity URLs. Re-fetches pages that have not been seen recently "
+        "or verified in a long time, detects closed/expired listings, and marks opportunities as stale so "
+        "they drop out of the default feed."
+    ),
+}
+
+DEPRECATED_SCHEDULER_KEYS: frozenset[str] = frozenset(
+    {
+        "fetch-all-sources-hourly",
+        "normalize-every-30-min",
+        "source-health-hourly",
+        "daily-digest-8am",
+        "deadline-reminders-9am",
+    }
+)
+
+SYNC_FIELDS = (
+    "name",
+    "description",
+    "task_path",
+    "schedule_kind",
+    "cron_minute",
+    "cron_hour",
+    "cron_day_of_week",
+    "interval_seconds",
+    "is_enabled",
+    "category",
+)
+
 DEFAULT_SCHEDULER_JOBS: list[dict] = [
     {
-        "key": "fetch-all-sources-hourly",
-        "name": "Fetch all sources",
-        "description": "Pull RSS/HTML listings from active opportunity sources.",
-        "task_path": "app.workers.ingest.tasks.fetch_all_sources_task",
+        "key": "ingestion-sync-hourly",
+        "name": "Ingestion sync",
+        "description": "Fetch sources, normalize backlog, index search, and check source health.",
+        "task_path": "app.workers.ingest.tasks.ingestion_sync_task",
         "schedule_kind": ScheduleKind.cron,
         "cron_minute": "0",
         "cron_hour": "*",
@@ -22,39 +73,13 @@ DEFAULT_SCHEDULER_JOBS: list[dict] = [
         "category": SchedulerCategory.ingest,
     },
     {
-        "key": "normalize-every-30-min",
-        "name": "Normalize raw documents",
-        "description": "Convert fetched raw documents into opportunity records.",
-        "task_path": "app.workers.ingest.tasks.normalize_all_task",
-        "schedule_kind": ScheduleKind.cron,
-        "cron_minute": "*/30",
-        "cron_hour": "*",
-        "cron_day_of_week": "*",
-        "interval_seconds": None,
-        "is_enabled": True,
-        "category": SchedulerCategory.ingest,
-    },
-    {
-        "key": "daily-digest-8am",
-        "name": "Daily digest email",
-        "description": "Send morning digest of new matches and deadlines.",
-        "task_path": "app.workers.notifications.tasks.send_daily_digest_task",
+        "key": "notifications-daily",
+        "name": "Daily notifications",
+        "description": "Morning digest and deadline reminders for all users.",
+        "task_path": "app.workers.notifications.tasks.notifications_daily_task",
         "schedule_kind": ScheduleKind.cron,
         "cron_minute": "0",
         "cron_hour": "8",
-        "cron_day_of_week": "*",
-        "interval_seconds": None,
-        "is_enabled": True,
-        "category": SchedulerCategory.notify,
-    },
-    {
-        "key": "deadline-reminders-9am",
-        "name": "Deadline reminders",
-        "description": "Notify users about upcoming application deadlines.",
-        "task_path": "app.workers.notifications.tasks.send_deadline_reminders_task",
-        "schedule_kind": ScheduleKind.cron,
-        "cron_minute": "0",
-        "cron_hour": "9",
         "cron_day_of_week": "*",
         "interval_seconds": None,
         "is_enabled": True,
@@ -74,19 +99,6 @@ DEFAULT_SCHEDULER_JOBS: list[dict] = [
         "category": SchedulerCategory.rank,
     },
     {
-        "key": "source-health-hourly",
-        "name": "Source health check",
-        "description": "Auto-deactivate sources that exceeded consecutive failure threshold.",
-        "task_path": "app.workers.ingest.tasks.source_health_check_task",
-        "schedule_kind": ScheduleKind.cron,
-        "cron_minute": "30",
-        "cron_hour": "*",
-        "cron_day_of_week": "*",
-        "interval_seconds": None,
-        "is_enabled": True,
-        "category": SchedulerCategory.ingest,
-    },
-    {
         "key": "staleness-check-weekly",
         "name": "Staleness check",
         "description": "Re-fetch opportunity pages and mark stale listings.",
@@ -102,19 +114,36 @@ DEFAULT_SCHEDULER_JOBS: list[dict] = [
 ]
 
 
-async def seed_scheduler_jobs(session: AsyncSession) -> int:
-    """Insert default scheduler rows and sync any missing job definitions."""
-    added = 0
+def scheduler_info_detail(key: str) -> str | None:
+    return SCHEDULER_INFO_DETAILS.get(key)
+
+
+async def seed_scheduler_jobs(session: AsyncSession, *, reset_defaults: bool = False) -> int:
+    """Insert missing jobs, remove deprecated merged jobs; optionally reset all fields to defaults."""
+    changed = 0
     for spec in DEFAULT_SCHEDULER_JOBS:
         result = await session.execute(
             select(SchedulerJob).where(SchedulerJob.key == spec["key"])
         )
-        if result.scalar_one_or_none() is None:
+        row = result.scalar_one_or_none()
+        if row is None:
             session.add(SchedulerJob(**spec))
-            added += 1
-    if added:
+            changed += 1
+        elif reset_defaults:
+            for field in SYNC_FIELDS:
+                setattr(row, field, spec[field])
+            changed += 1
+
+    if DEPRECATED_SCHEDULER_KEYS:
+        del_result = await session.execute(
+            delete(SchedulerJob).where(SchedulerJob.key.in_(DEPRECATED_SCHEDULER_KEYS))
+        )
+        if del_result.rowcount:
+            changed += del_result.rowcount
+
+    if changed:
         await session.commit()
-    return added
+    return changed
 
 
 def build_celery_schedule_entry(job: SchedulerJob) -> dict:

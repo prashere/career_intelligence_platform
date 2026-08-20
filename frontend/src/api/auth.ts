@@ -26,6 +26,7 @@ export interface SchedulerJob {
   key: string;
   name: string;
   description: string;
+  info_detail?: string | null;
   task_path: string;
   schedule_kind: 'cron' | 'interval';
   cron_minute: string | null;
@@ -222,6 +223,52 @@ export interface PlaygroundResult {
   dry_run?: boolean;
 }
 
+export interface DiscoveryRun {
+  id: string;
+  user_id: string;
+  status: string;
+  current_stage: string;
+  queries_used: Array<Record<string, string>>;
+  candidates_found: number;
+  candidates_evaluated: number;
+  error_message: string | null;
+  triggered_at: string;
+  finished_at: string | null;
+  meta: Record<string, unknown>;
+}
+
+export interface CandidateSource {
+  id: string;
+  discovery_run_id: string;
+  domain: string;
+  discovered_url: string;
+  evaluation_verdict: string;
+  relevance_notes: string;
+  legitimacy_notes: string;
+  confidence: number;
+  guessed_parser_config: Record<string, unknown>;
+  status: string;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
+export interface CandidateApprovalPayload {
+  registry_id: string;
+  name: string;
+  url: string;
+  source_type: string;
+  fetch_mode: string;
+  fetch_interval_minutes: number;
+  adapter_id?: string | null;
+  summary_completeness: string;
+  authority: number;
+  politeness_delay_ms: number;
+  regions: string[];
+  tags: string[];
+  degree_levels: string[];
+  parser_config: Record<string, unknown>;
+}
+
 export const adminApi = {
   schedulers: () => request<SchedulerJob[]>('/api/v1/admin/schedulers'),
   updateScheduler: (key: string, body: SchedulerUpdate) =>
@@ -231,6 +278,11 @@ export const adminApi = {
     }),
   seedSchedulers: () =>
     request<{ seeded: number }>('/api/v1/admin/schedulers/seed', { method: 'POST' }),
+  runScheduler: (key: string) =>
+    request<{ queued: boolean; task: string; key: string }>(
+      `/api/v1/admin/schedulers/${encodeURIComponent(key)}/run`,
+      { method: 'POST' },
+    ),
   ingestionOverview: () => request<IngestionOverview>('/api/v1/admin/ingestion/overview'),
   ingestionSources: () => request<SourceHealth[]>('/api/v1/admin/ingestion/sources'),
   ingestionRuns: (limit = 20) => request<IngestionRun[]>(`/api/v1/admin/ingestion/runs?limit=${limit}`),
@@ -247,4 +299,26 @@ export const adminApi = {
   triggerIngestionFetchAll: () => request<{ status: string }>('/api/v1/admin/ingestion/fetch-all', { method: 'POST' }),
   triggerSourceFetch: (sourceId: string) =>
     request<IngestionFetchResult>(`/api/v1/admin/ingestion/sources/${sourceId}/fetch`, { method: 'POST' }),
+  triggerSourceDiscovery: () =>
+    request<DiscoveryRun>('/api/v1/admin/source-discovery/runs', { method: 'POST' }),
+  listDiscoveryRuns: (limit = 20) =>
+    request<DiscoveryRun[]>(`/api/v1/admin/source-discovery/runs?limit=${limit}`),
+  getDiscoveryRun: (runId: string) =>
+    request<DiscoveryRun>(`/api/v1/admin/source-discovery/runs/${runId}`),
+  listDiscoveryCandidates: (runId: string) =>
+    request<CandidateSource[]>(`/api/v1/admin/source-discovery/runs/${runId}/candidates`),
+  getCandidateApprovalDefaults: (candidateId: string) =>
+    request<CandidateApprovalPayload>(
+      `/api/v1/admin/source-discovery/candidates/${candidateId}/approval-defaults`,
+    ),
+  rejectDiscoveryCandidate: (candidateId: string) =>
+    request<CandidateSource>(
+      `/api/v1/admin/source-discovery/candidates/${candidateId}/reject`,
+      { method: 'POST' },
+    ),
+  approveDiscoveryCandidate: (candidateId: string, body: CandidateApprovalPayload) =>
+    request<{ ok: boolean; registry_id: string; name: string; url: string }>(
+      `/api/v1/admin/source-discovery/candidates/${candidateId}/approve`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
 };
