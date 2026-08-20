@@ -368,10 +368,25 @@ export default function ProfileIntake() {
           <FormSection title="About you" description="Identity and links used for eligibility and your profile truth document.">
             <FormRow>
               <FormField label="Full name" required htmlFor={nameId}>
-                <input id={nameId} className="form-control" value={form.full_name} onChange={(e) => update('full_name', e.target.value)} autoComplete="name" />
+                <input
+                  id={nameId}
+                  className="form-control"
+                  value={form.full_name}
+                  onChange={(e) => update('full_name', e.target.value)}
+                  autoComplete="name"
+                  placeholder="Your full name"
+                />
               </FormField>
               <FormField label="Email" htmlFor={emailId} hint="Optional, for reminders later">
-                <input id={emailId} type="email" className="form-control" value={form.email} onChange={(e) => update('email', e.target.value)} autoComplete="email" />
+                <input
+                  id={emailId}
+                  type="email"
+                  className="form-control"
+                  value={form.email}
+                  onChange={(e) => update('email', e.target.value)}
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                />
               </FormField>
             </FormRow>
             <FormRow>
@@ -400,12 +415,22 @@ export default function ProfileIntake() {
                 <input className="form-control" value={form.github_url} onChange={(e) => update('github_url', e.target.value)} placeholder="https://github.com/…" />
               </FormField>
               <FormField label="Portfolio / website">
-                <input className="form-control" value={form.website_url} onChange={(e) => update('website_url', e.target.value)} />
+                <input
+                  className="form-control"
+                  value={form.website_url}
+                  onChange={(e) => update('website_url', e.target.value)}
+                  placeholder="https://your-site.com"
+                />
               </FormField>
             </FormRow>
             <FormRow>
               <FormField label="Google Scholar">
-                <input className="form-control" value={form.google_scholar_url} onChange={(e) => update('google_scholar_url', e.target.value)} />
+                <input
+                  className="form-control"
+                  value={form.google_scholar_url}
+                  onChange={(e) => update('google_scholar_url', e.target.value)}
+                  placeholder="https://scholar.google.com/citations?user=…"
+                />
               </FormField>
               <FormField label="ORCID">
                 <input className="form-control" value={form.orcid} onChange={(e) => update('orcid', e.target.value)} placeholder="0000-0000-0000-0000" />
@@ -467,11 +492,21 @@ export default function ProfileIntake() {
             </FormRow>
             {form.field_of_study === 'Other' && (
               <FormField label="Field of study (other)">
-                <input className="form-control" value={form.field_of_study_other} onChange={(e) => update('field_of_study_other', e.target.value)} />
+                <input
+                  className="form-control"
+                  value={form.field_of_study_other}
+                  onChange={(e) => update('field_of_study_other', e.target.value)}
+                  placeholder="e.g. biomedical engineering"
+                />
               </FormField>
             )}
             <FormField label="Institution" required>
-              <input className="form-control" value={form.institution} onChange={(e) => update('institution', e.target.value)} />
+              <input
+                className="form-control"
+                value={form.institution}
+                onChange={(e) => update('institution', e.target.value)}
+                placeholder="e.g. University of Example"
+              />
             </FormField>
             <FormRow>
               <FormField label="Graduation month">
@@ -488,7 +523,7 @@ export default function ProfileIntake() {
             </FormRow>
             <FormRow>
               <FormField label="GPA / grade">
-                <input className="form-control" value={form.gpa} onChange={(e) => update('gpa', e.target.value)} placeholder="e.g. 82.11" />
+                <input className="form-control" value={form.gpa} onChange={(e) => update('gpa', e.target.value)} placeholder="e.g. 3.7 or 85%" />
               </FormField>
               <FormField label="GPA scale">
                 <SelectInput value={form.gpa_scale} onChange={(v) => update('gpa_scale', v)} options={GPA_SCALES} />
@@ -499,7 +534,12 @@ export default function ProfileIntake() {
             </FormField>
             {form.honors === 'other' && (
               <FormField label="Honors (other)">
-                <input className="form-control" value={form.honors_other} onChange={(e) => update('honors_other', e.target.value)} />
+                <input
+                  className="form-control"
+                  value={form.honors_other}
+                  onChange={(e) => update('honors_other', e.target.value)}
+                  placeholder="e.g. Dean's List"
+                />
               </FormField>
             )}
             <label className="checkbox-field">
@@ -509,7 +549,7 @@ export default function ProfileIntake() {
             {form.still_studying && (
               <FormRow>
                 <FormField label="Expected graduation">
-                  <input className="form-control" value={form.expected_graduation} onChange={(e) => update('expected_graduation', e.target.value)} placeholder="e.g. Dec 2026" />
+                  <input className="form-control" value={form.expected_graduation} onChange={(e) => update('expected_graduation', e.target.value)} placeholder="e.g. May 2027" />
                 </FormField>
                 <FormField label="Current year of study">
                   <SelectInput value={form.current_year} onChange={(v) => update('current_year', v)} options={STUDY_YEARS} placeholder="Select" />
@@ -521,7 +561,7 @@ export default function ProfileIntake() {
                 <SelectInput value={form.english_test} onChange={(v) => update('english_test', v)} options={ENGLISH_TESTS} />
               </FormField>
               <FormField label="Overall score">
-                <input className="form-control" value={form.english_score} onChange={(e) => update('english_score', e.target.value)} placeholder="e.g. 8.0" />
+                <input className="form-control" value={form.english_score} onChange={(e) => update('english_score', e.target.value)} placeholder="e.g. 7.5" />
               </FormField>
               <FormField label="Test date">
                 <input className="form-control" type="date" value={form.english_test_date} onChange={(e) => update('english_test_date', e.target.value)} />
@@ -552,7 +592,7 @@ export default function ProfileIntake() {
             </FormField>
             {form.target_intake_term === 'custom' && (
               <FormField label="Custom intake term">
-                <input className="form-control" value={form.custom_intake_term} onChange={(e) => update('custom_intake_term', e.target.value)} placeholder="e.g. Winter 2028" />
+                <input className="form-control" value={form.custom_intake_term} onChange={(e) => update('custom_intake_term', e.target.value)} placeholder="e.g. Spring 2028" />
               </FormField>
             )}
             <FormField label="Funding requirement" required hint="Select every funding level you would accept">
@@ -571,7 +611,7 @@ export default function ProfileIntake() {
                   setRegionsInput(chipsToInput(current.includes(r) ? current.filter((x) => x !== r) : [...current, r]));
                 }}
               />
-              <input className="form-control" style={{ marginTop: '0.5rem' }} value={regionsInput} onChange={(e) => setRegionsInput(e.target.value)} placeholder="Or type: Germany, Europe, UK…" />
+              <input className="form-control" style={{ marginTop: '0.5rem' }} value={regionsInput} onChange={(e) => setRegionsInput(e.target.value)} placeholder="e.g. Europe, North America, UK" />
             </FormField>
             <FormField label="Countries to prioritize" hint="Order matters, first picks rank higher">
               <ChipGroup
@@ -591,7 +631,7 @@ export default function ProfileIntake() {
                 style={{ marginTop: '0.5rem' }}
                 value={countriesInput}
                 onChange={(e) => setCountriesInput(e.target.value)}
-                placeholder="Or type: Germany, United States, Canada…"
+                placeholder="e.g. Germany, Canada, Netherlands"
               />
             </FormField>
             <label className="checkbox-field">
@@ -607,18 +647,29 @@ export default function ProfileIntake() {
                   setFieldsInput(chipsToInput(current.includes(f) ? current.filter((x) => x !== f) : [...current, f]));
                 }}
               />
-              <input className="form-control" style={{ marginTop: '0.5rem' }} value={fieldsInput} onChange={(e) => setFieldsInput(e.target.value)} />
+              <input
+                className="form-control"
+                style={{ marginTop: '0.5rem' }}
+                value={fieldsInput}
+                onChange={(e) => setFieldsInput(e.target.value)}
+                placeholder="e.g. machine learning, robotics, climate science"
+              />
             </FormField>
             <FormField label="Research direction (one sentence)">
-              <textarea className="form-control" value={form.research_one_liner} onChange={(e) => update('research_one_liner', e.target.value)} rows={2} placeholder="What problems excite you?" />
+              <textarea className="form-control" value={form.research_one_liner} onChange={(e) => update('research_one_liner', e.target.value)} rows={2} placeholder="e.g. reliable vision systems for autonomous robots" />
             </FormField>
             <FormField label="Flagship projects">
-              <input className="form-control" value={form.flagship_projects} onChange={(e) => update('flagship_projects', e.target.value)} placeholder="TellO, PAT system, …" />
+              <input className="form-control" value={form.flagship_projects} onChange={(e) => update('flagship_projects', e.target.value)} placeholder="e.g. capstone thesis, published paper, open-source repo" />
             </FormField>
             {form.target_degree === 'PhD' && (
               <>
                 <FormField label="Preferred supervisors / labs">
-                  <input className="form-control" value={form.preferred_supervisors} onChange={(e) => update('preferred_supervisors', e.target.value)} />
+                  <input
+                    className="form-control"
+                    value={form.preferred_supervisors}
+                    onChange={(e) => update('preferred_supervisors', e.target.value)}
+                    placeholder="e.g. Prof. Smith (robotics lab)"
+                  />
                 </FormField>
                 <label className="checkbox-field">
                   <input type="checkbox" checked={form.open_to_ra} onChange={(e) => update('open_to_ra', e.target.checked)} />
@@ -646,7 +697,12 @@ export default function ProfileIntake() {
               />
             </FormField>
             <FormField label="Other anti-goal">
-              <input className="form-control" value={form.anti_goals_other} onChange={(e) => update('anti_goals_other', e.target.value)} />
+              <input
+                className="form-control"
+                value={form.anti_goals_other}
+                onChange={(e) => update('anti_goals_other', e.target.value)}
+                placeholder="e.g. roles requiring permanent relocation"
+              />
             </FormField>
           </FormSection>
         )}
@@ -691,7 +747,7 @@ export default function ProfileIntake() {
                   className="form-control"
                   value={form.target_universities}
                   onChange={(e) => update('target_universities', e.target.value)}
-                  placeholder="TU Dresden, ETH Zurich, MIT, …"
+                  placeholder="e.g. ETH Zurich, University of Toronto, MIT"
                 />
               </FormField>
             </FormSection>
@@ -705,7 +761,7 @@ export default function ProfileIntake() {
                   className="form-control"
                   value={form.connections}
                   onChange={(e) => update('connections', e.target.value)}
-                  placeholder="Prof. Calandra, DAAD alum network, former lab mates…"
+                  placeholder="e.g. former supervisor, alumni network, lab colleague"
                 />
               </FormField>
             </FormSection>
@@ -735,7 +791,7 @@ export default function ProfileIntake() {
                   value={form.mobility_notes}
                   onChange={(e) => update('mobility_notes', e.target.value)}
                   rows={2}
-                  placeholder="Partner location, visa history, max time away from home country…"
+                  placeholder="e.g. partner location, visa history, max time away from home"
                 />
               </FormField>
             </FormSection>
@@ -752,7 +808,7 @@ export default function ProfileIntake() {
                   max={40}
                   value={form.hours_per_week}
                   onChange={(e) => update('hours_per_week', e.target.value)}
-                  placeholder="8"
+                  placeholder="e.g. 10"
                 />
               </FormField>
               <FormField label="Additional notes">
@@ -761,7 +817,7 @@ export default function ProfileIntake() {
                   value={form.additional_notes}
                   onChange={(e) => update('additional_notes', e.target.value)}
                   rows={3}
-                  placeholder="Visa constraints, dependents, disability accommodations, industry pivot goals…"
+                  placeholder="e.g. visa constraints, dependents, accommodation needs, career pivot goals"
                 />
               </FormField>
             </FormSection>
