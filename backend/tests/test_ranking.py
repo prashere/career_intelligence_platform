@@ -196,6 +196,8 @@ def test_fit_percent_in_response():
     )
     resp = _to_response(opp, uo)
     assert resp.fit_percent == 67
+    assert resp.trust.state == "unchecked"
+    assert resp.deadline_bucket == "unknown"
     assert 0 <= resp.fit_percent <= 100
     assert resp.fit_percent == round(resp.fit_score * 100)
 

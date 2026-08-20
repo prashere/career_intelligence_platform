@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { intakeApi } from '../api/intake';
 import OpportunityCard from '../components/OpportunityCard';
+import ClosingSoonSection from '../components/dashboard/ClosingSoonSection';
 import DashboardHeaderSummary from '../components/dashboard/DashboardHeaderSummary';
 import MatchList from '../components/dashboard/MatchList';
 import { Button, PageHeader, Skeleton } from '../components/ui/Primitives';
@@ -63,6 +64,8 @@ export default function Dashboard() {
         dashboard={data}
         deadlinesWeek={deadlinesWeek}
       />
+
+      <ClosingSoonSection />
 
       <MatchList />
 

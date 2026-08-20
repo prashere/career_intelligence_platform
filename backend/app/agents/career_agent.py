@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
-from icalendar import Calendar, Event
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,17 +51,6 @@ async def update_checklist(session: AsyncSession, user_opportunity_id: str, titl
     session.add(Requirement(user_opportunity_id=user_opportunity_id, title=title))
     await session.commit()
     return f"Added checklist item: {title}"
-
-
-def create_calendar_event(title: str, deadline: datetime, url: str = "") -> str:
-    cal = Calendar()
-    event = Event()
-    event.add("summary", title)
-    event.add("dtstart", deadline.date())
-    event.add("dtend", deadline.date())
-    event.add("description", url)
-    cal.add_component(event)
-    return cal.to_ical().decode("utf-8")
 
 
 async def create_reminder(session: AsyncSession, user_id: str, title: str, when: datetime, body: str) -> str:

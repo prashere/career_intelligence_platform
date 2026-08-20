@@ -32,6 +32,14 @@ class OpportunitySourceResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OpportunityTrust(BaseModel):
+    state: Literal["verified", "aggregator_only", "unchecked", "conflict"]
+    label: str
+    hint: str
+    checked_at: Optional[datetime] = None
+    primary_url: Optional[str] = None
+
+
 class OpportunityResponse(BaseModel):
     id: str
     title: str
@@ -52,10 +60,12 @@ class OpportunityResponse(BaseModel):
     fit_explanation: Optional[str] = None
     score_breakdown: Optional[dict] = None
     rank_position: Optional[int] = None
+    trust: OpportunityTrust
     verification_status: Optional[str] = None
     verified_at: Optional[datetime] = None
     days_until_deadline: Optional[int] = None
     urgency_label: Optional[str] = None
+    deadline_bucket: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -64,6 +74,12 @@ class OpportunityListResponse(BaseModel):
     items: list[OpportunityResponse] = Field(default_factory=list)
     total: int = 0
     next_cursor: Optional[str] = None
+    unknown_deadline_count: Optional[int] = None
+
+
+class CalendarLinksResponse(BaseModel):
+    google_url: str
+    has_deadline: bool = True
 
 
 class FeedSummary(BaseModel):

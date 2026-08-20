@@ -4,6 +4,15 @@ import {
   DISMISS_REASONS,
   type OpportunityStatus,
 } from '../hooks/useOpportunityStatusMutation';
+import { downloadCalendarFile, openGoogleCalendar } from '../hooks/useCalendarExport';
+import CardCalendarActions from './CardCalendarActions';
+import {
+  DeadlineChip,
+  deadlineChipClass,
+  deadlineChipLabel,
+  hasCalendarDeadline,
+} from './DeadlineChip';
+import { TrustBadge } from './TrustBadge';
 import { Badge, Button } from './ui/Primitives';
 import { Modal } from './ui/Modal';
 
@@ -112,6 +121,7 @@ export default function OpportunityCard({
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [dismissOpen, setDismissOpen] = useState(false);
+  const [calendarPending, setCalendarPending] = useState(false);
   const breakdown = opportunity.score_breakdown;
   const reasons = breakdown?.reasons ?? breakdown?.eligibility_reasons ?? [];
   const hidePercent = breakdown?.hide_match_percent ?? reasons.length === 0;
@@ -121,22 +131,49 @@ export default function OpportunityCard({
   const context = reasons.filter((r) => r.direction === 'neutral');
   const keywordOnly = reasons.some((r) => r.code === 'semantic_keyword_only');
 
-  const urgencyClass =
-    opportunity.urgency_label?.includes('day') ? 'urgent' :
-    opportunity.urgency_label?.includes('week') ? 'soon' : 'later';
+  const deadlineLabel = deadlineChipLabel(opportunity);
+  const deadlineClass = deadlineChipClass(opportunity.deadline_bucket);
+  const canExportCalendar = hasCalendarDeadline(opportunity);
 
-  const fitLine = hidePercent
-    ? fitLabel(opportunity.fit_level)
-    : `${fitLabel(opportunity.fit_level)} · ${opportunity.fit_percent}%`;
+  const showFitPercent = !hidePercent && opportunity.fit_percent != null;
+  const fitLine = showFitPercent
+    ? `${fitLabel(opportunity.fit_level)} · ${opportunity.fit_percent}%`
+    : fitLabel(opportunity.fit_level);
 
   const primaryReason =
     opportunity.fit_explanation ||
-    (hidePercent ? 'This listing has too little detail to match against your profile' : opportunity.summary);
+    (hidePercent
+      ? 'This listing has too little detail to match against your profile'
+      : opportunity.summary);
 
   const statusInfo = statusBadge(opportunity.status);
   const isDismissed = opportunity.status === 'dismissed' || opportunity.status === 'archived';
   const isSaved = opportunity.status === 'saved';
   const isApplied = opportunity.status === 'applied' || opportunity.status === 'in_progress';
+
+  async function handleDownloadCalendar() {
+    if (!canExportCalendar) return;
+    setCalendarPending(true);
+    try {
+      await downloadCalendarFile(opportunity.id, opportunity.title);
+    } finally {
+      setCalendarPending(false);
+    }
+  }
+
+  async function handleGoogleCalendar() {
+    if (!canExportCalendar) return;
+    setCalendarPending(true);
+    try {
+      await openGoogleCalendar(opportunity.id);
+    } finally {
+      setCalendarPending(false);
+    }
+  }
+
+  const showStatusToolbar =
+    (onStatusChange && !allowRestore) || (allowRestore && isDismissed && onStatusChange);
+  const showToolbar = showStatusToolbar || canExportCalendar;
 
   return (
     <>
@@ -144,22 +181,30 @@ export default function OpportunityCard({
         className={`opp-card opp-card-v2 ${variant === 'priority' ? 'opp-card-priority' : ''} ${statusCardClass(opportunity.status)}`}
         onClick={onClick}
         onKeyDown={(e) => e.key === 'Enter' && onClick?.()}
-        role="button"
-        tabIndex={0}
+        role={onClick ? 'button' : undefined}
+        tabIndex={onClick ? 0 : undefined}
       >
-        <div className="opp-card-main">
-          <div className="opp-card-head-row">
-            {showRank && opportunity.rank_position != null && opportunity.rank_position <= 10 && (
-              <span className="opp-rank-badge">#{opportunity.rank_position}</span>
+        <div className="opp-card-body">
+          <header className="opp-card-header">
+            <div className="opp-card-header-main">
+              <div className="opp-card-head-row">
+                {showRank && opportunity.rank_position != null && opportunity.rank_position <= 10 && (
+                  <span className="opp-rank-badge">#{opportunity.rank_position}</span>
+                )}
+                <h4 className="opp-title">{opportunity.title}</h4>
+              </div>
+              {(opportunity.institution || opportunity.program) && (
+                <p className="opp-meta">
+                  {[opportunity.institution, opportunity.program].filter(Boolean).join(' · ')}
+                </p>
+              )}
+            </div>
+            {deadlineLabel && (
+              <div className="opp-card-header-aside">
+                <DeadlineChip label={deadlineLabel} className={deadlineClass} />
+              </div>
             )}
-            <h4 className="opp-title">{opportunity.title}</h4>
-          </div>
-
-          {(opportunity.institution || opportunity.program) && (
-            <p className="opp-meta">
-              {[opportunity.institution, opportunity.program].filter(Boolean).join(' · ')}
-            </p>
-          )}
+          </header>
 
           <p className="opp-fit-reason">{primaryReason}</p>
 
@@ -169,57 +214,72 @@ export default function OpportunityCard({
             {opportunity.opportunity_type && (
               <Badge variant="navy">{opportunity.opportunity_type}</Badge>
             )}
-            {opportunity.verification_status === 'primary_confirmed' && (
-              <Badge variant="success">Verified</Badge>
-            )}
-            {opportunity.tags?.slice(0, 2).map((tag) => (
+            {opportunity.trust && <TrustBadge trust={opportunity.trust} />}
+            {opportunity.tags?.slice(0, 3).map((tag) => (
               <span key={tag} className="opp-tag-chip">{tag}</span>
             ))}
           </div>
 
-          {allowRestore && isDismissed && onStatusChange && (
-            <div className="opp-action-row" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                className="opp-restore-btn"
-                disabled={statusPending}
-                onClick={() => onStatusChange('new')}
-              >
-                Restore to matches
-              </button>
-            </div>
+          {showToolbar && (
+            <footer
+              className={`opp-card-toolbar${showStatusToolbar && canExportCalendar ? ' opp-card-toolbar-split' : ''}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {showStatusToolbar && (
+                <div className="opp-toolbar-start">
+                  {allowRestore && isDismissed && onStatusChange ? (
+                    <button
+                      type="button"
+                      className="opp-restore-btn"
+                      disabled={statusPending}
+                      onClick={() => onStatusChange('new')}
+                    >
+                      Restore to matches
+                    </button>
+                  ) : onStatusChange && !allowRestore ? (
+                    <div className="opp-status-actions">
+                      <button
+                        type="button"
+                        className={`opp-action-btn${isSaved ? ' active' : ''}`}
+                        disabled={statusPending || isDismissed}
+                        onClick={() => onStatusChange(isSaved ? 'new' : 'saved')}
+                      >
+                        {isSaved ? 'Unsave' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        className={`opp-action-btn${isApplied ? ' active' : ''}`}
+                        disabled={statusPending || isDismissed}
+                        onClick={() => onStatusChange(isApplied ? 'new' : 'applied')}
+                      >
+                        {isApplied ? 'Unapply' : 'Applied'}
+                      </button>
+                      <button
+                        type="button"
+                        className="opp-action-btn opp-action-dismiss"
+                        disabled={statusPending || isDismissed}
+                        onClick={() => setDismissOpen(true)}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {canExportCalendar && (
+                <div className="opp-toolbar-end">
+                  <CardCalendarActions
+                    disabled={calendarPending || isDismissed}
+                    onDownloadIcs={handleDownloadCalendar}
+                    onGoogleCalendar={handleGoogleCalendar}
+                  />
+                </div>
+              )}
+            </footer>
           )}
 
-          {onStatusChange && !allowRestore && (
-            <div className="opp-action-row" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                className={`opp-action-btn${isSaved ? ' active' : ''}`}
-                disabled={statusPending || isDismissed}
-                onClick={() => onStatusChange(isSaved ? 'new' : 'saved')}
-              >
-                {isSaved ? 'Unsave' : 'Save'}
-              </button>
-              <button
-                type="button"
-                className={`opp-action-btn${isApplied ? ' active' : ''}`}
-                disabled={statusPending || isDismissed}
-                onClick={() => onStatusChange(isApplied ? 'new' : 'applied')}
-              >
-                {isApplied ? 'Unapply' : 'Applied'}
-              </button>
-              <button
-                type="button"
-                className="opp-action-btn opp-action-dismiss"
-                disabled={statusPending || isDismissed}
-                onClick={() => setDismissOpen(true)}
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
-
-          <div className="opp-why-toggle-wrap">
+          <div className="opp-card-links">
             <button
               type="button"
               className="opp-why-toggle"
@@ -274,15 +334,6 @@ export default function OpportunityCard({
                 </p>
               )}
             </div>
-          )}
-        </div>
-
-        <div className="opp-card-aside">
-          {opportunity.urgency_label && (
-            <span className={`opp-deadline ${urgencyClass}`}>{opportunity.urgency_label}</span>
-          )}
-          {!hidePercent && opportunity.fit_percent != null && (
-            <span className="opp-score-pill">{opportunity.fit_percent}%</span>
           )}
         </div>
       </article>

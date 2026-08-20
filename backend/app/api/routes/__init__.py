@@ -4,7 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.career_agent import approve_pending_action, create_calendar_event, run_agent
+from app.agents.career_agent import approve_pending_action, run_agent
+from app.services.calendar_export import create_calendar_event, google_calendar_url
 from app.api.deps import get_current_user_profile, require_admin
 from app.database import get_db
 from app.models import (
@@ -24,6 +25,7 @@ from app.rag.retriever import answer_question, index_opportunity
 from app.schemas import (
     ApplicationResponse,
     ApplicationUpdate,
+    CalendarLinksResponse,
     ChatRequest,
     ChatResponse,
     CommunityCreate,
@@ -179,12 +181,36 @@ async def update_status(
 
 
 @router.get("/opportunities/{opportunity_id}/calendar")
-async def export_calendar(opportunity_id: str, db: AsyncSession = Depends(get_db)):
+async def export_calendar(
+    opportunity_id: str,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
     opp = await db.get(Opportunity, opportunity_id)
     if not opp or not opp.deadline:
         raise HTTPException(status_code=404, detail="No deadline for this opportunity")
     ics = create_calendar_event(opp.title, opp.deadline, opp.url)
-    return Response(content=ics, media_type="text/calendar", headers={"Content-Disposition": f'attachment; filename="{opp.id}.ics"'})
+    safe_name = opp.id.replace("/", "-")
+    return Response(
+        content=ics,
+        media_type="text/calendar",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.ics"'},
+    )
+
+
+@router.get("/opportunities/{opportunity_id}/calendar/links", response_model=CalendarLinksResponse)
+async def calendar_links(
+    opportunity_id: str,
+    db: AsyncSession = Depends(get_db),
+    profile: UserProfile = Depends(get_current_user_profile),
+):
+    opp = await db.get(Opportunity, opportunity_id)
+    if not opp or not opp.deadline:
+        raise HTTPException(status_code=404, detail="No deadline for this opportunity")
+    return CalendarLinksResponse(
+        google_url=google_calendar_url(opp.title, opp.deadline, opp.url),
+        has_deadline=True,
+    )
 
 
 @router.get("/opportunities/{opportunity_id}/requirements", response_model=list[RequirementResponse])

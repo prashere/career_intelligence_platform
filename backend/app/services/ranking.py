@@ -1,8 +1,9 @@
 """Ranking service — composite fit scores for user opportunities."""
 
 import json
+import math
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +29,18 @@ from app.services.profile_storage import load_eligibility_rules as load_eligibil
 from app.services.profile_storage import load_ranking_config as load_ranking_config_db
 
 logger = get_logger(__name__)
+
+CLOSING_SOON_WINDOW_DAYS = 14
+
+DeadlineBucket = Literal[
+    "overdue",
+    "today",
+    "within_3_days",
+    "within_7_days",
+    "within_30_days",
+    "later",
+    "unknown",
+]
 
 SEMANTIC_WEIGHT = 0.45
 ELIGIBILITY_WEIGHT = 0.30
@@ -57,11 +70,8 @@ def load_ranking_config() -> dict[str, Any]:
 def urgency_score(deadline: Optional[datetime]) -> float:
     if not deadline:
         return 0.0
-    now = datetime.now(timezone.utc)
-    if deadline.tzinfo is None:
-        deadline = deadline.replace(tzinfo=timezone.utc)
-    days = (deadline - now).days
-    if days < 0:
+    days = days_until(deadline)
+    if days is None or days < 0:
         return 0.0
     if days <= 7:
         return 1.0
@@ -724,23 +734,44 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 def days_until(deadline: Optional[datetime]) -> Optional[int]:
+    """Whole days remaining, rounded up so a deadline 23 hours away reads as 1 day."""
     if not deadline:
         return None
     now = datetime.now(timezone.utc)
     if deadline.tzinfo is None:
         deadline = deadline.replace(tzinfo=timezone.utc)
-    return (deadline - now).days
+    seconds = (deadline - now).total_seconds()
+    if seconds <= 0:
+        return 0 if seconds == 0 else -math.ceil(abs(seconds) / 86400)
+    return math.ceil(seconds / 86400)
+
+
+def deadline_bucket(days: Optional[int]) -> DeadlineBucket:
+    if days is None:
+        return "unknown"
+    if days < 0:
+        return "overdue"
+    if days == 0:
+        return "today"
+    if days <= 3:
+        return "within_3_days"
+    if days <= 7:
+        return "within_7_days"
+    if days <= 30:
+        return "within_30_days"
+    return "later"
 
 
 def urgency_label(days: Optional[int]) -> Optional[str]:
     if days is None:
         return None
     if days < 0:
-        return "expired"
+        return "Expired"
     if days == 0:
-        return "today"
-    if days <= 7:
+        return "Due today"
+    if days == 1:
+        return "1 day left"
+    if days <= 30:
         return f"{days} days left"
-    if days <= 14:
-        return f"{days // 7} week{'s' if days // 7 > 1 else ''}"
-    return f"{days // 7} weeks"
+    weeks = days // 7
+    return f"{weeks} week{'s' if weeks != 1 else ''} left"

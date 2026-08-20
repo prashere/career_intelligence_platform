@@ -11,7 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.logging_config import get_logger
 from app.models.verification import DomainLegitimacyCache, OrgDomainCache
-from app.verification.domain_utils import extract_domain, is_institutional_domain, normalize_org_key
+from app.verification.domain_utils import (
+    extract_domain,
+    is_institutional_domain,
+    is_non_primary_domain,
+    normalize_org_key,
+)
 from app.verification.prescreen import scan_scam_phrases
 
 logger = get_logger(__name__)
@@ -161,23 +166,42 @@ async def refresh_domain_legitimacy(
 def pick_canonical_domain_from_search(
     org_name: str,
     results: list[dict],
+    *,
+    exclude_domains: set[str] | None = None,
 ) -> tuple[str | None, str | None]:
-    """Pick best domain from Tavily search results."""
-    org_lower = org_name.lower()
+    """Pick the best candidate primary-source domain from search results.
+
+    Aggregator, social, and self-referential domains are never eligible, so a
+    listing can only be confirmed by an independent page.
+    """
+    excluded = {d.lower() for d in (exclude_domains or set()) if d}
+    org_lower = (org_name or "").lower().strip()
+    org_token = org_lower.split()[0] if org_lower else ""
+
+    candidates: list[tuple[int, str, str]] = []
     for hit in results:
         url = hit.get("url") or ""
         domain = extract_domain(url)
-        if not domain:
+        if not domain or domain in excluded or is_non_primary_domain(domain):
             continue
+
         title = (hit.get("title") or "").lower()
         content = (hit.get("content") or "").lower()
-        if org_lower.split()[0] in domain or org_lower.split()[0] in title:
-            return domain, url
+
         if is_institutional_domain(domain):
-            return domain, url
-        if "official" in title or "official" in content[:200]:
-            return domain, url
-    if results:
-        url = results[0].get("url") or ""
-        return extract_domain(url), url
-    return None, None
+            score = 0
+        elif org_token and org_token in domain:
+            score = 1
+        elif org_token and org_token in title:
+            score = 2
+        elif "official" in title or "official" in content[:200]:
+            score = 3
+        else:
+            score = 4
+        candidates.append((score, domain, url))
+
+    if not candidates:
+        return None, None
+
+    best = min(candidates, key=lambda c: c[0])
+    return best[1], best[2]

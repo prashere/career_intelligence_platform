@@ -86,6 +86,7 @@ class IngestionOverviewResponse(BaseModel):
     active_sources: int
     sources_with_errors: int
     last_run_at: datetime | None
+    verification_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class TraceEventResponse(BaseModel):

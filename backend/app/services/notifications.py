@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FitLevel, Notification, Opportunity, UserOpportunity, UserOpportunityStatus
 from app.services.email import send_email
+from app.services.ranking import days_until
 
 
 async def create_notification(
@@ -57,7 +58,6 @@ async def send_daily_digest(session: AsyncSession, user_id: str) -> dict:
 
 
 async def send_deadline_reminders(session: AsyncSession, user_id: str) -> dict:
-    now = datetime.now(timezone.utc)
     windows = [7, 3, 1]
     sent_count = 0
 
@@ -66,17 +66,20 @@ async def send_deadline_reminders(session: AsyncSession, user_id: str) -> dict:
         .join(Opportunity, UserOpportunity.opportunity_id == Opportunity.id)
         .where(
             UserOpportunity.user_id == user_id,
-            UserOpportunity.status == UserOpportunityStatus.in_progress,
+            UserOpportunity.status.in_(
+                [
+                    UserOpportunityStatus.saved,
+                    UserOpportunityStatus.applied,
+                    UserOpportunityStatus.in_progress,
+                ]
+            ),
             Opportunity.deadline.isnot(None),
         )
     )
 
     for uo, opp in result.all():
-        deadline = opp.deadline
-        if deadline.tzinfo is None:
-            deadline = deadline.replace(tzinfo=timezone.utc)
-        days = (deadline - now).days
-        if days in windows:
+        days = days_until(opp.deadline)
+        if days is not None and days in windows:
             title = f"Deadline reminder: {opp.title}"
             body = f"{opp.title} deadline is in {days} day(s)."
             await create_notification(session, user_id, title, body, "deadline", opp.id)

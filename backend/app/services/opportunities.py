@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
-from sqlalchemy import func, not_, or_, select
+from sqlalchemy import case, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -19,10 +19,18 @@ from app.schemas import (
     FeedSummary,
     OpportunityListResponse,
     OpportunityResponse,
+    OpportunityTrust,
     WeeklyFocusResponse,
 )
+from app.verification.presentation import build_trust_presentation
 from app.services.affinity import append_status_history
-from app.services.ranking import days_until, NEUTRAL_FIT_REASON, urgency_label
+from app.services.ranking import (
+    CLOSING_SOON_WINDOW_DAYS,
+    days_until,
+    deadline_bucket,
+    NEUTRAL_FIT_REASON,
+    urgency_label,
+)
 
 Bucket = Literal["matches", "closing_soon", "saved", "applied", "dismissed"]
 SortMode = Literal["fit", "deadline"]
@@ -50,6 +58,15 @@ def _to_response(opp: Opportunity, uo: Optional[UserOpportunity] = None) -> Oppo
     if hide_percent and uo:
         fit_explanation = NEUTRAL_FIT_REASON
 
+    trust_data = build_trust_presentation(opp)
+    trust = OpportunityTrust(
+        state=trust_data["state"],
+        label=trust_data["label"],
+        hint=trust_data["hint"],
+        checked_at=trust_data["checked_at"],
+        primary_url=trust_data["primary_url"],
+    )
+
     return OpportunityResponse(
         id=opp.id,
         title=opp.title,
@@ -70,10 +87,12 @@ def _to_response(opp: Opportunity, uo: Optional[UserOpportunity] = None) -> Oppo
         fit_explanation=fit_explanation,
         score_breakdown=breakdown,
         rank_position=uo.rank_position if uo else None,
+        trust=trust,
         verification_status=opp.verification_status,
         verified_at=opp.verified_at,
         days_until_deadline=d,
         urgency_label=urgency_label(d),
+        deadline_bucket=deadline_bucket(d),
     )
 
 
@@ -165,7 +184,24 @@ async def list_opportunities(
     if eligibility_rules:
         base = _apply_sql_eligibility_filters(base, eligibility_rules, now)
 
-    week_ahead = now + timedelta(days=14)
+    closing_window = now + timedelta(days=CLOSING_SOON_WINDOW_DAYS)
+
+    visible_status = or_(
+        UserOpportunity.status.in_(
+            [
+                UserOpportunityStatus.saved,
+                UserOpportunityStatus.applied,
+                UserOpportunityStatus.in_progress,
+            ]
+        ),
+        UserOpportunity.status.is_(None),
+        UserOpportunity.status.not_in(
+            [
+                UserOpportunityStatus.archived,
+                UserOpportunityStatus.dismissed,
+            ]
+        ),
+    )
 
     if bucket == "saved":
         base = base.where(UserOpportunity.status == UserOpportunityStatus.saved)
@@ -184,8 +220,8 @@ async def list_opportunities(
     elif bucket == "closing_soon":
         base = base.where(
             Opportunity.deadline.isnot(None),
-            Opportunity.deadline <= week_ahead,
-            Opportunity.deadline >= now,
+            Opportunity.deadline <= closing_window,
+            visible_status,
         )
     else:
         base = base.where(
@@ -200,21 +236,73 @@ async def list_opportunities(
             )
         )
 
-    if sort == "deadline":
+    verification_tiebreak = case(
+        (Opportunity.verification_status == "primary_confirmed", 0),
+        (Opportunity.verification_status == "aggregator_only", 1),
+        else_=2,
+    )
+
+    if bucket == "closing_soon":
+        base = base.order_by(
+            Opportunity.deadline.asc(),
+            Opportunity.created_at.desc(),
+        )
+    elif sort == "deadline":
         base = base.order_by(
             Opportunity.deadline.asc().nullslast(),
             UserOpportunity.rank_position.asc().nullslast(),
+            verification_tiebreak.asc(),
             Opportunity.created_at.desc(),
         )
     else:
         base = base.order_by(
             UserOpportunity.rank_position.asc().nullslast(),
             UserOpportunity.fit_score.desc().nullslast(),
+            verification_tiebreak.asc(),
             Opportunity.created_at.desc(),
         )
 
     count_q = select(func.count()).select_from(base.order_by(None).subquery())
     total = (await session.execute(count_q)).scalar_one()
+
+    unknown_deadline_count: Optional[int] = None
+    if bucket == "closing_soon":
+        unknown_base = (
+            select(Opportunity, UserOpportunity)
+            .outerjoin(
+                UserOpportunity,
+                (UserOpportunity.opportunity_id == Opportunity.id)
+                & (UserOpportunity.user_id == user_id),
+            )
+            .where(
+                Opportunity.duplicate_of.is_(None),
+                or_(
+                    Opportunity.verification_status.is_(None),
+                    Opportunity.verification_status != "stale",
+                ),
+                Opportunity.deadline.is_(None),
+                visible_status,
+            )
+        )
+        if search:
+            unknown_base = unknown_base.where(
+                or_(
+                    Opportunity.title.ilike(f"%{search}%"),
+                    Opportunity.summary.ilike(f"%{search}%"),
+                    Opportunity.search_vector.ilike(f"%{search.lower()}%"),
+                )
+            )
+        if opportunity_type:
+            unknown_base = unknown_base.where(Opportunity.opportunity_type == opportunity_type)
+        if funding_type:
+            unknown_base = unknown_base.where(Opportunity.funding_type == funding_type)
+        if eligibility_rules:
+            unknown_base = _apply_sql_eligibility_filters(unknown_base, eligibility_rules, now)
+        unknown_deadline_count = (
+            await session.execute(
+                select(func.count()).select_from(unknown_base.subquery())
+            )
+        ).scalar_one()
 
     result = await session.execute(base.offset(offset).limit(limit))
     items = [_to_response(opp, uo) for opp, uo in result.all()]
@@ -223,7 +311,12 @@ async def list_opportunities(
     if offset + len(items) < total:
         next_cursor = str(offset + len(items))
 
-    return OpportunityListResponse(items=items, total=total, next_cursor=next_cursor)
+    return OpportunityListResponse(
+        items=items,
+        total=total,
+        next_cursor=next_cursor,
+        unknown_deadline_count=unknown_deadline_count,
+    )
 
 
 async def get_feed(
@@ -251,7 +344,15 @@ async def get_feed(
                 Opportunity.verification_status != "stale",
             ),
         )
-        .order_by(UserOpportunity.fit_score.desc().nullslast(), Opportunity.created_at.desc())
+        .order_by(
+            UserOpportunity.fit_score.desc().nullslast(),
+            case(
+                (Opportunity.verification_status == "primary_confirmed", 0),
+                (Opportunity.verification_status == "aggregator_only", 1),
+                else_=2,
+            ).asc(),
+            Opportunity.created_at.desc(),
+        )
     )
 
     if search:

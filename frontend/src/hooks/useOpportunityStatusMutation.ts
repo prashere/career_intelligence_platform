@@ -133,6 +133,7 @@ export function useOpportunityStatusMutation(bucket: Bucket) {
     onSuccess: (_data, vars, context) => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'matches-preview'] });
+      queryClient.invalidateQueries({ queryKey: ['opportunities', 'closing_soon'] });
 
       const label = statusActionLabel(vars.status, context?.previousStatus);
 

@@ -40,6 +40,9 @@ class FieldComparison:
     match: bool
     similarity: float
     note: str | None = None
+    # Only fields where both sides published a value can prove agreement or
+    # disagreement. A missing value is absence of evidence, not a conflict.
+    comparable: bool = True
 
 
 @dataclass

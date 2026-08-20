@@ -32,6 +32,19 @@ def verify_recent_opportunities_task(limit: int = 25):
     return run_async(_run_batch(limit))
 
 
+@celery_app.task(name="app.workers.verification.tasks.verify_backfill_task")
+def verify_backfill_task(limit: int = 100):
+    """Verify unverified backlog (no recent-only cutoff)."""
+
+    async def _run():
+        async with async_session() as session:
+            from app.verification.service import run_verification_backfill
+
+            return await run_verification_backfill(session, limit=limit)
+
+    return run_async(_run())
+
+
 @celery_app.task(name="app.workers.verification.tasks.verify_opportunity_task")
 def verify_opportunity_task(opportunity_id: str):
     async def _one():

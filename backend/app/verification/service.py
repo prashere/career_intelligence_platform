@@ -164,6 +164,60 @@ async def find_pending_verification_ids(
     return [o.id for o in opps.scalars().all() if is_eligible_for_verification(o)]
 
 
+async def find_backlog_verification_ids(
+    session: AsyncSession,
+    *,
+    limit: int | None = None,
+    include_aggregator_only: bool = False,
+) -> list[str]:
+    """Unverified opportunities eligible for verification (no time cutoff)."""
+    statuses = [VerificationStatus.unverified.value]
+    if include_aggregator_only:
+        statuses.append(VerificationStatus.aggregator_only.value)
+
+    result = await session.execute(
+        select(Opportunity.id)
+        .where(
+            Opportunity.verification_status.in_(statuses),
+            Opportunity.duplicate_of.is_(None),
+        )
+        .order_by(Opportunity.created_at.asc())
+        .limit(limit or settings.verification_batch_size)
+    )
+    ids = [row[0] for row in result.all()]
+    if not ids:
+        return []
+    opps = await session.execute(select(Opportunity).where(Opportunity.id.in_(ids)))
+    return [o.id for o in opps.scalars().all() if is_eligible_for_verification(o)]
+
+
+async def run_verification_backfill(
+    session: AsyncSession,
+    *,
+    limit: int | None = None,
+    include_aggregator_only: bool = False,
+) -> dict:
+    ids = await find_backlog_verification_ids(
+        session,
+        limit=limit,
+        include_aggregator_only=include_aggregator_only,
+    )
+    outcomes = []
+    for oid in ids:
+        try:
+            outcomes.append(await verify_opportunity(session, oid))
+        except Exception as exc:
+            logger.exception("verification_backfill_failed", opportunity_id=oid)
+            outcomes.append({"ok": False, "opportunity_id": oid, "error": str(exc)})
+    confirmed = sum(1 for o in outcomes if o.get("status") == VerificationStatus.primary_confirmed.value)
+    return {
+        "ok": True,
+        "processed": len(outcomes),
+        "primary_confirmed": confirmed,
+        "outcomes": outcomes,
+    }
+
+
 async def run_verification_batch(
     session: AsyncSession,
     *,

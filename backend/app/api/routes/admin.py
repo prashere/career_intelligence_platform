@@ -88,12 +88,21 @@ async def ingestion_overview(
     active = sum(1 for s in sources if s.is_active)
     with_errors = sum(1 for s in sources if s.last_error)
     last_run = await db.scalar(select(IngestionRun.started_at).order_by(desc(IngestionRun.started_at)).limit(1))
+    verification_rows = await db.execute(
+        select(Opportunity.verification_status, func.count())
+        .where(Opportunity.duplicate_of.is_(None))
+        .group_by(Opportunity.verification_status)
+    )
+    verification_counts = {
+        (row[0] or "unverified"): row[1] for row in verification_rows.all()
+    }
     return IngestionOverviewResponse(
         total_opportunities=total_opps,
         total_sources=len(sources),
         active_sources=active,
         sources_with_errors=with_errors,
         last_run_at=last_run,
+        verification_counts=verification_counts,
     )
 
 
@@ -174,6 +183,17 @@ async def sync_envelope(
     envelope = load_envelope_from_compiled()
     await sync_platform_envelope(db, envelope)
     return {"ok": True, "keys": list(envelope.keys())}
+
+
+@router.post("/ingestion/verify-backfill")
+async def trigger_verification_backfill(
+    limit: int = Query(100, ge=1, le=500),
+    _: User = Depends(require_admin),
+):
+    from app.workers.verification.tasks import verify_backfill_task
+
+    verify_backfill_task.delay(limit=limit)
+    return {"status": "queued", "limit": limit}
 
 
 @router.post("/ingestion/fetch-all")

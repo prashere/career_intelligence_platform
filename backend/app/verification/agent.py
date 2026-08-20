@@ -18,9 +18,14 @@ from app.verification.cache import (
     refresh_domain_legitimacy,
     save_org_domain,
 )
-from app.verification.compare import compare_claims
+from app.verification.compare import compare_claims, confirms_listing, has_material_conflict
 from app.verification.contracts import AggregatorClaims, PrescreenResult, VerificationResult
-from app.verification.domain_utils import extract_domain, guess_org_name, is_institutional_domain
+from app.verification.domain_utils import (
+    domain_matches_org,
+    extract_domain,
+    guess_org_name,
+    is_institutional_domain,
+)
 from app.verification.page_intel import fetch_and_extract
 from app.verification.prescreen import run_prescreen
 
@@ -68,6 +73,10 @@ async def verify_opportunity_with_agent(
     canonical_domain: str | None = None
     primary_url: str | None = None
 
+    # The listing's own domain can never confirm the listing.
+    listing_domain = extract_domain(claims.url)
+    exclude_domains = {listing_domain} if listing_domain else set()
+
     cached = await get_org_domain(session, org_name)
     if cached and cached.confidence >= 0.55:
         canonical_domain = cached.canonical_domain
@@ -79,23 +88,27 @@ async def verify_opportunity_with_agent(
         search_queries.append(q1)
         results = await web_search(q1, max_results=5)
         search_count += 1
-        canonical_domain, primary_url = pick_canonical_domain_from_search(org_name, results)
+        canonical_domain, primary_url = pick_canonical_domain_from_search(
+            org_name, results, exclude_domains=exclude_domains
+        )
 
     if not canonical_domain and claims.program and search_count < max_search:
         q2 = f'"{org_name}" "{claims.program}" deadline'
         search_queries.append(q2)
         results = await web_search(q2, max_results=5)
         search_count += 1
-        canonical_domain, primary_url = pick_canonical_domain_from_search(org_name, results)
+        canonical_domain, primary_url = pick_canonical_domain_from_search(
+            org_name, results, exclude_domains=exclude_domains
+        )
 
     if not canonical_domain and search_count < max_search:
         q3 = f'"{claims.title}" scholarship fellowship apply'
         search_queries.append(q3)
         results = await web_search(q3, max_results=5)
         search_count += 1
-        if results:
-            primary_url = results[0].get("url") or primary_url
-            canonical_domain = extract_domain(primary_url or "") or canonical_domain
+        canonical_domain, primary_url = pick_canonical_domain_from_search(
+            org_name, results, exclude_domains=exclude_domains
+        )
 
     if canonical_domain:
         await save_org_domain(
@@ -177,21 +190,35 @@ async def verify_opportunity_with_agent(
                 "match": f.match,
                 "similarity": f.similarity,
                 "note": f.note,
+                "comparable": f.comparable,
             }
             for f in comparison.fields
         ],
     }
     meta["primary_extraction"] = primary_fields.raw_extraction
 
-    if comparison.all_match:
+    # Only the organization's own site can confirm or contradict a listing.
+    # A third-party republisher agreeing with an aggregator proves nothing.
+    primary_domain = extract_domain(primary_url or "")
+    strong_primary = bool(primary_domain) and (
+        is_institutional_domain(primary_domain)
+        or domain_matches_org(primary_domain, org_name)
+    )
+    meta["primary_source"] = {
+        "domain": primary_domain,
+        "strong": strong_primary,
+    }
+
+    if not strong_primary:
+        status = VerificationStatus.aggregator_only.value
+        trust = prescreen.trust_score
+        meta["reason"] = "primary_source_not_authoritative"
+    elif confirms_listing(comparison):
         status = VerificationStatus.primary_confirmed.value
         trust = min(1.0, prescreen.trust_score + 0.25)
-    elif comparison.partial_match and comparison.discrepancies:
+    elif has_material_conflict(comparison):
         status = VerificationStatus.stale.value
-        trust = prescreen.trust_score * 0.85
-    elif comparison.discrepancies:
-        status = VerificationStatus.stale.value
-        trust = prescreen.trust_score * 0.7
+        trust = prescreen.trust_score * (0.85 if comparison.partial_match else 0.7)
     else:
         status = VerificationStatus.aggregator_only.value
         trust = prescreen.trust_score

@@ -51,7 +51,7 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
   return <div className={`card ${className}`.trim()}>{children}</div>;
 }
 
-type BadgeVariant = 'gold' | 'navy' | 'success' | 'warning' | 'muted';
+export type BadgeVariant = 'gold' | 'navy' | 'success' | 'warning' | 'muted';
 
 export function Badge({
   children,

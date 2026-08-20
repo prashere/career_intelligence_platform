@@ -60,6 +60,24 @@ export interface OpportunityListResponse {
   items: Opportunity[];
   total: number;
   next_cursor?: string | null;
+  unknown_deadline_count?: number | null;
+}
+
+export type DeadlineBucket =
+  | 'overdue'
+  | 'today'
+  | 'within_3_days'
+  | 'within_7_days'
+  | 'within_30_days'
+  | 'later'
+  | 'unknown';
+
+export interface OpportunityTrust {
+  state: 'verified' | 'aggregator_only' | 'unchecked' | 'conflict';
+  label: string;
+  hint: string;
+  checked_at?: string;
+  primary_url?: string;
 }
 
 export interface Opportunity {
@@ -82,10 +100,12 @@ export interface Opportunity {
   fit_explanation?: string;
   score_breakdown?: ScoreBreakdown;
   rank_position?: number;
+  trust: OpportunityTrust;
   verification_status?: string;
   verified_at?: string;
   days_until_deadline?: number;
   urgency_label?: string;
+  deadline_bucket?: DeadlineBucket;
 }
 
 export interface FeedResponse {
@@ -214,7 +234,10 @@ export const api = {
     request<LearningItem>('/api/v1/learning', { method: 'POST', body: JSON.stringify(data) }),
   notifications: () => request<Notification[]>('/api/v1/notifications'),
   markRead: (id: string) => request(`/api/v1/notifications/${id}/read`, { method: 'PATCH' }),
-  calendarUrl: (id: string) => `${API_BASE}/api/v1/opportunities/${id}/calendar`,
+  calendarLinks: (id: string) =>
+    request<{ google_url: string; has_deadline: boolean }>(
+      `/api/v1/opportunities/${id}/calendar/links`,
+    ),
   people: () => request<Person[]>('/api/v1/people'),
   createPerson: (data: Partial<Person>) =>
     request<Person>('/api/v1/people', { method: 'POST', body: JSON.stringify(data) }),
