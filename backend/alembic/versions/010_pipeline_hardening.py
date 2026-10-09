@@ -2,6 +2,7 @@
 
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "010_pipeline_hardening"
@@ -11,6 +12,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "user_opportunities" not in inspector.get_table_names():
+        return
     op.execute(
         "ALTER TABLE user_opportunities ADD COLUMN IF NOT EXISTS status_history JSONB "
         "DEFAULT '[]'::jsonb NOT NULL"

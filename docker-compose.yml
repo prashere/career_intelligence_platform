@@ -30,7 +30,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: sh -c "alembic upgrade head && PYTHONPATH=/app python scripts/ensure_schema.py && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://career:career@db:5432/career_intelligence
@@ -39,6 +39,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       PROJECT_ROOT: /workspace
+      PYTHONPATH: /app
     ports:
       - "8000:8000"
     volumes:
@@ -64,6 +65,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       PROJECT_ROOT: /workspace
+      PYTHONPATH: /app
     volumes:
       - ./backend:/app
       - ./config:/workspace/config
@@ -86,6 +88,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       PROJECT_ROOT: /workspace
+      PYTHONPATH: /app
     volumes:
       - ./backend:/app
       - ./config:/workspace/config

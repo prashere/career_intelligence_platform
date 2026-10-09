@@ -20,8 +20,8 @@ def upgrade() -> None:
     if "profile_intake_drafts" not in existing:
         op.create_table(
             "profile_intake_drafts",
-            sa.Column("id", sa.String(), nullable=False),
-            sa.Column("user_id", sa.String(), nullable=False),
+            sa.Column("id", sa.UUID(as_uuid=False), nullable=False),
+            sa.Column("user_id", sa.UUID(as_uuid=False), nullable=False),
             sa.Column("step", sa.Integer(), nullable=False, server_default="0"),
             sa.Column("form", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
             sa.Column("cv_text", sa.Text(), nullable=False, server_default=""),
@@ -35,8 +35,8 @@ def upgrade() -> None:
     if "profile_submissions" not in existing:
         op.create_table(
             "profile_submissions",
-            sa.Column("id", sa.String(), nullable=False),
-            sa.Column("user_id", sa.String(), nullable=False),
+            sa.Column("id", sa.UUID(as_uuid=False), nullable=False),
+            sa.Column("user_id", sa.UUID(as_uuid=False), nullable=False),
             sa.Column("submission_id", sa.String(length=64), nullable=False),
             sa.Column("form", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
             sa.Column("cv_text", sa.Text(), nullable=False, server_default=""),
@@ -50,8 +50,8 @@ def upgrade() -> None:
     if "user_structured_profiles" not in existing:
         op.create_table(
             "user_structured_profiles",
-            sa.Column("id", sa.String(), nullable=False),
-            sa.Column("user_id", sa.String(), nullable=False),
+            sa.Column("id", sa.UUID(as_uuid=False), nullable=False),
+            sa.Column("user_id", sa.UUID(as_uuid=False), nullable=False),
             sa.Column("data", postgresql.JSONB(), nullable=True),
             sa.Column("prefill", postgresql.JSONB(), nullable=True),
             sa.Column("extraction", postgresql.JSONB(), nullable=True),
@@ -66,8 +66,8 @@ def upgrade() -> None:
     if "user_profile_artifacts" not in existing:
         op.create_table(
             "user_profile_artifacts",
-            sa.Column("id", sa.String(), nullable=False),
-            sa.Column("user_id", sa.String(), nullable=False),
+            sa.Column("id", sa.UUID(as_uuid=False), nullable=False),
+            sa.Column("user_id", sa.UUID(as_uuid=False), nullable=False),
             sa.Column("filter_config", postgresql.JSONB(), nullable=True),
             sa.Column("eligibility_rules", postgresql.JSONB(), nullable=True),
             sa.Column("ranking_config", postgresql.JSONB(), nullable=True),

@@ -2,6 +2,7 @@
 
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "008_ingestion_hardening"
@@ -11,16 +12,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # IF NOT EXISTS handles partial runs where score_breakdown was added but migration failed later.
-    op.execute(
-        "ALTER TABLE user_opportunities ADD COLUMN IF NOT EXISTS score_breakdown JSONB"
-    )
-    op.execute(
-        "ALTER TABLE opportunity_sources ADD COLUMN IF NOT EXISTS outcome_stats JSONB"
-    )
-    op.execute(
-        "ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS ingestion_meta JSONB"
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    tables = set(inspector.get_table_names())
+
+    # Legacy app tables (user_opportunities etc.) are created via Base.metadata.create_all.
+    if "user_opportunities" in tables:
+        op.execute(
+            "ALTER TABLE user_opportunities ADD COLUMN IF NOT EXISTS score_breakdown JSONB"
+        )
+    if "opportunity_sources" in tables:
+        op.execute(
+            "ALTER TABLE opportunity_sources ADD COLUMN IF NOT EXISTS outcome_stats JSONB"
+        )
+    if "opportunities" in tables:
+        op.execute(
+            "ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS ingestion_meta JSONB"
+        )
 
 
 def downgrade() -> None:

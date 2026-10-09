@@ -31,8 +31,8 @@ def upgrade() -> None:
 
     op.create_table(
         "profile_pipeline_runs",
-        sa.Column("id", sa.String(), nullable=False),
-        sa.Column("user_id", sa.String(), nullable=False),
+        sa.Column("id", sa.UUID(as_uuid=False), nullable=False),
+        sa.Column("user_id", sa.UUID(as_uuid=False), nullable=False),
         sa.Column("submission_id", sa.String(length=64), nullable=False),
         sa.Column(
             "status",

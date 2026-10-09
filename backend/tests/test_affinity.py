@@ -11,7 +11,7 @@ from app.services.affinity import (
 
 def test_affinity_boosts_saved_tags():
     opp = Opportunity(title="AI fellowship", tags=["machine learning", "Germany"])
-    saved_opp = Opportunity(title="Other", tags=["machine learning"], institution="TU Dresden")
+    saved_opp = Opportunity(title="Other", tags=["machine learning"], institution="Harbor State University")
     uo_saved = UserOpportunity(status=UserOpportunityStatus.saved)
     profile = build_affinity_profile([(uo_saved, saved_opp)])
 

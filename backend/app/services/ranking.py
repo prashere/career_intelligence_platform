@@ -5,7 +5,7 @@ import math
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.logging_config import get_logger
@@ -27,6 +27,7 @@ from app.services.opportunity_facts import apply_facts_to_opportunity, derive_fa
 from app.services.profile_intake import compiled_dir
 from app.services.profile_storage import load_eligibility_rules as load_eligibility_rules_db
 from app.services.profile_storage import load_ranking_config as load_ranking_config_db
+from app.services.catalog_privacy import FICTIONAL_DEMO_URL_HASH_PREFIX
 
 logger = get_logger(__name__)
 
@@ -551,6 +552,7 @@ async def rank_opportunities_for_user(session: AsyncSession, profile_id: str) ->
     result = await session.execute(
         select(Opportunity).where(
             Opportunity.duplicate_of.is_(None),
+            not_(Opportunity.url_hash.startswith(FICTIONAL_DEMO_URL_HASH_PREFIX)),
             or_(Opportunity.deadline.is_(None), Opportunity.deadline >= now),
             or_(
                 Opportunity.verification_status.is_(None),

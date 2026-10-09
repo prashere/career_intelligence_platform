@@ -12,19 +12,28 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-  # ALTER TYPE ... ADD VALUE cannot run in the same transaction that uses the new value.
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "user_opportunities" not in inspector.get_table_names():
+        # Table + enum are created later by Base.metadata.create_all on API boot.
+        return
+
+    # ALTER TYPE ... ADD VALUE cannot run in the same transaction that uses the new value.
     with op.get_context().autocommit_block():
         op.execute("ALTER TYPE useropportunitystatus ADD VALUE IF NOT EXISTS 'applied'")
         op.execute("ALTER TYPE useropportunitystatus ADD VALUE IF NOT EXISTS 'dismissed'")
 
-    op.add_column(
-        "user_opportunities",
-        sa.Column("dismiss_reason", sa.String(length=32), nullable=True),
-    )
-    op.add_column(
-        "user_opportunities",
-        sa.Column("status_changed_at", sa.DateTime(timezone=True), nullable=True),
-    )
+    cols = {c["name"] for c in inspector.get_columns("user_opportunities")}
+    if "dismiss_reason" not in cols:
+        op.add_column(
+            "user_opportunities",
+            sa.Column("dismiss_reason", sa.String(length=32), nullable=True),
+        )
+    if "status_changed_at" not in cols:
+        op.add_column(
+            "user_opportunities",
+            sa.Column("status_changed_at", sa.DateTime(timezone=True), nullable=True),
+        )
     op.execute(
         "UPDATE user_opportunities SET status_changed_at = updated_at "
         "WHERE status_changed_at IS NULL"
@@ -32,6 +41,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("user_opportunities", "status_changed_at")
-    op.drop_column("user_opportunities", "dismiss_reason")
-    # PostgreSQL cannot remove enum values without recreating the type.
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "user_opportunities" not in inspector.get_table_names():
+        return
+    cols = {c["name"] for c in inspector.get_columns("user_opportunities")}
+    if "status_changed_at" in cols:
+        op.drop_column("user_opportunities", "status_changed_at")
+    if "dismiss_reason" in cols:
+        op.drop_column("user_opportunities", "dismiss_reason")

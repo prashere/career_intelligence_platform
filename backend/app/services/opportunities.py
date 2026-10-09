@@ -24,6 +24,11 @@ from app.schemas import (
 )
 from app.verification.presentation import build_trust_presentation
 from app.services.affinity import append_status_history
+from app.services.catalog_privacy import (
+    exclude_fictional_demo,
+    is_fictional_demo_hash,
+    user_has_matching_profile,
+)
 from app.services.ranking import (
     CLOSING_SOON_WINDOW_DAYS,
     days_until,
@@ -143,6 +148,14 @@ async def list_opportunities(
     offset = int(cursor or 0)
     limit = max(1, min(limit, 100))
 
+    if not await user_has_matching_profile(session, user_id):
+        return OpportunityListResponse(
+            items=[],
+            total=0,
+            next_cursor=None,
+            unknown_deadline_count=0 if bucket == "closing_soon" else None,
+        )
+
     profile = await session.get(UserProfile, user_id)
     eligibility_rules: dict = {}
     if profile:
@@ -162,6 +175,7 @@ async def list_opportunities(
             ),
         )
     )
+    base = exclude_fictional_demo(base)
 
     if verified_only:
         base = base.where(Opportunity.verification_status == "primary_confirmed")
@@ -284,6 +298,7 @@ async def list_opportunities(
                 visible_status,
             )
         )
+        unknown_base = exclude_fictional_demo(unknown_base)
         if search:
             unknown_base = unknown_base.where(
                 or_(
@@ -331,6 +346,9 @@ async def get_feed(
 ) -> FeedResponse:
     from app.ingestion.eligibility import load_eligibility_rules_for_user, passes_eligibility
 
+    if not await user_has_matching_profile(session, user_id):
+        return empty_feed()
+
     query = (
         select(Opportunity, UserOpportunity)
         .outerjoin(
@@ -344,15 +362,16 @@ async def get_feed(
                 Opportunity.verification_status != "stale",
             ),
         )
-        .order_by(
-            UserOpportunity.fit_score.desc().nullslast(),
-            case(
-                (Opportunity.verification_status == "primary_confirmed", 0),
-                (Opportunity.verification_status == "aggregator_only", 1),
-                else_=2,
-            ).asc(),
-            Opportunity.created_at.desc(),
-        )
+    )
+    query = exclude_fictional_demo(query)
+    query = query.order_by(
+        UserOpportunity.fit_score.desc().nullslast(),
+        case(
+            (Opportunity.verification_status == "primary_confirmed", 0),
+            (Opportunity.verification_status == "aggregator_only", 1),
+            else_=2,
+        ).asc(),
+        Opportunity.created_at.desc(),
     )
 
     if search:
@@ -436,8 +455,10 @@ async def get_feed(
 async def get_opportunity_detail(
     session: AsyncSession, user_id: str, opportunity_id: str
 ) -> Optional[OpportunityResponse]:
+    if not await user_has_matching_profile(session, user_id):
+        return None
     opp = await session.get(Opportunity, opportunity_id)
-    if not opp:
+    if not opp or is_fictional_demo_hash(opp.url_hash):
         return None
     result = await session.execute(
         select(UserOpportunity).where(

@@ -159,14 +159,14 @@ export const REGION_OPTIONS = [
 ];
 
 export const FIELD_SUGGESTIONS = [
-  'robotics',
-  'computer vision',
-  'human-robot interaction',
-  'machine learning',
-  'computational modelling',
-  'reinforcement learning',
-  'NLP',
-  'edge AI',
+  'computer science',
+  'data science',
+  'public policy',
+  'economics',
+  'biology',
+  'education',
+  'climate science',
+  'engineering',
 ];
 
 export const ANTI_GOAL_OPTIONS: { key: AntiGoalKey; label: string }[] = [

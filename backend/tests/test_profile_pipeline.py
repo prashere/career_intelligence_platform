@@ -10,8 +10,8 @@ from app.services.profile_pipeline import (
 
 SAMPLE_FORM = {
     "full_name": "Test User",
-    "nationality_code": "NP",
-    "current_country_code": "NP",
+    "nationality_code": "CA",
+    "current_country_code": "CA",
     "linkedin_url": "https://linkedin.com/in/test",
     "github_url": "",
     "target_degree": "MSc",
@@ -23,7 +23,7 @@ SAMPLE_FORM = {
     "target_fields": ["robotics", "computer vision", "HRI"],
     "developing_country_scholarships": True,
     "search_sources": ["Opportunity Desk", "ProFellow", "LinkedIn"],
-    "target_universities": "TU Dresden, RWTH Aachen",
+    "target_universities": "Harbor State University, Northhaven Institute",
     "discovery_mode": "target_list",
     "open_to_relocation": True,
     "other_languages": ["German"],
@@ -75,11 +75,11 @@ SAMPLE_EXTRACTION = {
 def test_prefill_includes_identity_and_sources():
     data = prefill_from_form(SAMPLE_FORM)
     assert data["identity"]["full_name"] == "Test User"
-    assert data["identity"]["nationality"] == "NP"
+    assert data["identity"]["nationality"] == "CA"
     assert data["preferences"]["target_degree"] == "MSc"
     assert data["preferences"]["discovery_mode"] == "target_list"
     assert data["preferences"]["other_languages"] == ["German"]
-    assert data["preferences"]["target_universities"] == ["TU Dresden", "RWTH Aachen"]
+    assert data["preferences"]["target_universities"] == ["Harbor State University", "Northhaven Institute"]
     assert len(data["sources"]["aggregators"]) == 4
     assert "LinkedIn" in data["sources"]["manual_channels"]
     ids = [a["id"] for a in data["sources"]["aggregators"]]
@@ -153,7 +153,7 @@ def test_compile_profile_writes_l3_artifacts(tmp_path, monkeypatch):
 
     fc = __import__("json").loads((out_dir / "filter_config.json").read_text(encoding="utf-8"))
     assert fc["discovery_mode"] == "target_list"
-    assert "TU Dresden" in fc["institution_match_any"]
+    assert "Harbor State University" in fc["institution_match_any"]
 
     rc = __import__("json").loads((out_dir / "ranking_config.json").read_text(encoding="utf-8"))
     assert rc["university_match_weight"] == 0.35

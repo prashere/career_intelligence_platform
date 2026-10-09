@@ -63,7 +63,7 @@ The gate scores discovered items into `admit` / `investigate` / `reject`. Tune i
 
 | Script | What it does | How to run |
 |--------|----------------|------------|
-| `seed.py` | Seeds demo users, communities, opportunities, and sample ingestion data for local development. | `python scripts/seed.py` |
+| `seed.py` | Removes leftover authentic sample rows from older versions. Does not copy any real profile. Optional `--fictional-demo` inserts clearly fake placeholder cards that stay hidden after profile setup. | `python scripts/seed.py` or `python scripts/seed.py --fictional-demo` |
 | `promote_admin.py` | Sets an existing user's role to administrator. | `python scripts/promote_admin.py admin@localhost` |
 | `test_groq.py` | Verifies `GROQ_API_KEY` and runs a sample chat (optional `--stream`). Run from platform root so `.env` is found. | `cd .. && python backend/scripts/test_groq.py` |
 | `test_langsmith.py` | Verifies LangSmith tracing config and sends a traced test chat. | `cd .. && python backend/scripts/test_langsmith.py` |

@@ -61,18 +61,30 @@ export default function Dashboard() {
       )}
 
       <DashboardHeaderSummary
-        dashboard={data}
-        deadlinesWeek={deadlinesWeek}
+        dashboard={profileComplete ? data : undefined}
+        deadlinesWeek={profileComplete ? deadlinesWeek : 0}
       />
 
-      <ClosingSoonSection />
-
-      <MatchList />
+      {profileComplete ? (
+        <>
+          <ClosingSoonSection />
+          <MatchList />
+        </>
+      ) : (
+        <section className="card dashboard-panel">
+          <h3 className="panel-title">Your matches</h3>
+          <p className="muted-text">
+            Nothing is listed yet. Finish profile setup so the app can fetch and rank
+            opportunities for you. Sample or leftover listings from this machine are not shown
+            on a new account.
+          </p>
+        </section>
+      )}
 
       <div className="dashboard-layout dashboard-layout-bottom">
         <section className="card dashboard-panel">
           <h3 className="panel-title">In progress</h3>
-          {data?.in_progress.length ? (
+          {profileComplete && data?.in_progress.length ? (
             <div className="card-list compact">
               {data.in_progress.map((opp) => (
                 <OpportunityCard key={opp.id} opportunity={opp} />

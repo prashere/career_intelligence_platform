@@ -126,7 +126,7 @@ def test_eligibility_phd_only_hard_fail_for_msc():
         degree_levels=["phd"],
         summary="PhD only doctoral program",
     )
-    ev = evaluate_eligibility(profile, opp, {"require_funding": "full_only", "nationality": "Nepal"})
+    ev = evaluate_eligibility(profile, opp, {"require_funding": "full_only", "nationality": "Canada"})
     assert ev.hard_failed
     assert any(r.code == "degree_mismatch" for r in ev.reasons)
 
@@ -150,7 +150,7 @@ def test_eligibility_us_citizens_hard_fail():
     ev = evaluate_eligibility(
         profile,
         opp,
-        {"require_funding": "full_only", "nationality": "Nepal", "reject_if_text_contains": []},
+        {"require_funding": "full_only", "nationality": "Canada", "reject_if_text_contains": []},
     )
     assert ev.hard_failed
     assert any(r.code == "us_citizens_only" for r in ev.reasons)

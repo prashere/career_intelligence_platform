@@ -1,4 +1,4 @@
-import type { OpportunityTrust } from '../../api/client';
+import type { OpportunityTrust } from '../api/client';
 import { Badge, type BadgeVariant } from './ui/Primitives';
 
 function trustBadgeVariant(state: OpportunityTrust['state']): BadgeVariant {
